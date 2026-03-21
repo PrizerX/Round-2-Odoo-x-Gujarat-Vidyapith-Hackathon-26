@@ -6,6 +6,11 @@
 
 Learnova is a responsive eLearning platform with two experiences: a Backoffice for instructors/admins and a Learner site/app. It is built as a rapid prototype using mock data and mock auth, with a planned migration to Supabase for authentication and storage.
 
+<p align=center>
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/51a456e6-87d0-4d58-af24-5913e1697996" />
+</p>
+
+
 ## Product overview
 
 - Backoffice: create and manage courses, lessons, quizzes, and track learner progress.
