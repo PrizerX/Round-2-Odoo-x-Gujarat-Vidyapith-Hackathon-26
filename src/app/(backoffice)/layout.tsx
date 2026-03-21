@@ -43,12 +43,22 @@ export default async function BackofficeLayout({
               >
                 Reporting
               </Link>
-              <Link
-                href="/backoffice/settings"
-                className="rounded-[10px] border border-border bg-background px-3 py-2 hover:bg-accent"
-              >
-                Setting
-              </Link>
+              {session.user.role === "admin" ? (
+                <Link
+                  href="/backoffice/settings"
+                  className="rounded-[10px] border border-border bg-background px-3 py-2 hover:bg-accent"
+                >
+                  Settings
+                </Link>
+              ) : (
+                <span
+                  className="cursor-not-allowed rounded-[10px] border border-border bg-background px-3 py-2 text-muted opacity-60"
+                  aria-disabled="true"
+                  title="Admins only"
+                >
+                  Settings
+                </span>
+              )}
             </nav>
           </div>
 

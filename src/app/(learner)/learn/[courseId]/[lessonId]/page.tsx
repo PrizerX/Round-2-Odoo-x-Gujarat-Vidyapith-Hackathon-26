@@ -13,8 +13,10 @@ function isBackofficeViewer(role: string | undefined): boolean {
 
 function buildPlayerLessons(args: {
   courseId: string;
-  completionPercent: number;
   units: Array<{ id: string; title: string; sortOrder: number }>;
+  visitedLessonIds: Set<string>; // db lesson ids
+  completedLessonIds: Set<string>; // db lesson ids
+  lockedAfterIndex: number; // inclusive allowed index; items after this are locked
   rows: Array<{
     id: string;
     title: string;
@@ -48,9 +50,6 @@ function buildPlayerLessons(args: {
     };
   }>;
 }): PlayerLesson[] {
-  const safePercent = Math.max(0, Math.min(100, args.completionPercent));
-  const completedCount = Math.floor((safePercent / 100) * Math.max(1, args.rows.length));
-
   const unitById = new Map(args.units.map((u) => [u.id, u] as const));
 
   return args.rows.map((l, idx) => {
@@ -90,7 +89,9 @@ function buildPlayerLessons(args: {
       id: toRouteLessonId(args.courseId, l.id),
       title: l.title,
       type: l.type,
-      completed: idx + 1 <= completedCount,
+      visited: args.visitedLessonIds.has(l.id),
+      completed: args.completedLessonIds.has(l.id),
+      locked: idx > args.lockedAfterIndex,
       description: l.description ?? undefined,
       videoUrl: l.videoUrl ?? undefined,
       allowDownload: !!l.allowDownload,
@@ -187,9 +188,7 @@ export default async function LearnerPlayerPage({
     progress = null;
   }
   const completedCourses = await getCompletedCourseIds(session.user.id);
-  const completionPercent = completedCourses.has(courseId)
-    ? 100
-    : (progress?.completionPercent ?? 0);
+  const courseCompletedOverride = completedCourses.has(courseId);
 
   const unitRows = await prisma.courseUnit.findMany({
     where: { courseId },
@@ -234,19 +233,67 @@ export default async function LearnerPlayerPage({
     },
   })) as unknown as Parameters<typeof buildPlayerLessons>[0]["rows"];
 
+  // DB-backed lesson progress (visited/completed). A row existing means “visited”.
+  const dbLessonIds = lessonRows.map((l) => l.id);
+  const lessonProgressRows = (await prisma.lessonProgress.findMany({
+    where: { userId: session.user.id, lessonId: { in: dbLessonIds } },
+    select: { lessonId: true, completed: true },
+  })) as Array<{ lessonId: string; completed: boolean }>;
+  const visitedLessonIds = new Set<string>(lessonProgressRows.map((r) => r.lessonId));
+  const completedLessonIds = new Set<string>(lessonProgressRows.filter((r) => r.completed).map((r) => r.lessonId));
+
+  if (courseCompletedOverride) {
+    for (const id of dbLessonIds) {
+      visitedLessonIds.add(id);
+      completedLessonIds.add(id);
+    }
+  }
+
+  // Sequential locking: only allow up to the first incomplete lesson.
+  let lockedAfterIndex = lessonRows.length - 1;
+  if (!courseCompletedOverride) {
+    const firstIncomplete = lessonRows.findIndex((l) => !completedLessonIds.has(l.id));
+    lockedAfterIndex = firstIncomplete >= 0 ? firstIncomplete : lessonRows.length - 1;
+  }
+
+  // Resolve requested lesson; redirect if locked.
+  const routeIds = lessonRows.map((l) => toRouteLessonId(courseId, l.id));
+  const requestedIndex = Math.max(0, routeIds.findIndex((id) => id === lessonId));
+  const allowedIndex = requestedIndex > lockedAfterIndex ? lockedAfterIndex : requestedIndex;
+  const boundedLessonId = routeIds[allowedIndex] ?? (routeIds[0] as string);
+
+  // Mark current lesson as visited (best-effort).
+  try {
+    const candidateIds = Array.from(new Set([`${courseId}:${boundedLessonId}`, boundedLessonId]));
+    const currentLesson = await prisma.lesson.findFirst({
+      where: { courseId, id: { in: candidateIds } },
+      select: { id: true },
+    });
+
+    if (currentLesson) {
+      visitedLessonIds.add(currentLesson.id);
+      await prisma.lessonProgress.upsert({
+        where: { userId_lessonId: { userId: session.user.id, lessonId: currentLesson.id } },
+        update: {},
+        create: { userId: session.user.id, lessonId: currentLesson.id },
+      });
+    }
+  } catch {
+    // ignore
+  }
+
   const lessons = buildPlayerLessons({
     courseId,
-    completionPercent,
     units: unitRows,
+    visitedLessonIds,
+    completedLessonIds,
+    lockedAfterIndex,
     rows: lessonRows,
   });
 
   if (lessons.length === 0) {
     redirect(`/courses/${courseId}`);
   }
-
-  const lessonIds = lessons.map((l) => l.id);
-  const boundedLessonId = lessonIds.includes(lessonId) ? lessonId : (lessonIds[0] as string);
 
   // L3: best-effort DB sync for progress once the learner has joined.
   try {
@@ -259,11 +306,9 @@ export default async function LearnerPlayerPage({
       const shouldSync = courseRow.accessRule === "open" ? hasAccessViaDb : true;
       if (!shouldSync) throw new Error("not_joined");
 
-      // Compute progress from completed lessons (index-based; caps at 99; 100 is set on completion).
-      const currentIndex = Math.max(0, lessons.findIndex((l) => l.id === boundedLessonId));
-      const completedLessons = Math.max(0, Math.min(lessons.length, currentIndex));
+      const completedLessons = completedLessonIds.size;
       const rawPercent = lessons.length > 0 ? Math.floor((completedLessons / lessons.length) * 100) : 0;
-      const computedPercent = Math.max(0, Math.min(99, rawPercent));
+      const computedPercent = Math.max(0, Math.min(100, rawPercent));
 
       const existing = await prisma.courseProgress.findUnique({
         where: { userId_courseId: { userId: session.user.id, courseId } },
@@ -282,6 +327,7 @@ export default async function LearnerPlayerPage({
           lastLessonId: boundedLessonId,
           completionPercent: nextPercent,
           startedAt: (existing as any)?.startedAt ?? new Date(),
+          completedAt: nextPercent >= 100 ? new Date() : null,
         },
         create: {
           userId: session.user.id,
@@ -289,6 +335,7 @@ export default async function LearnerPlayerPage({
           completionPercent: nextPercent,
           lastLessonId: boundedLessonId,
           startedAt: new Date(),
+          completedAt: nextPercent >= 100 ? new Date() : null,
         },
       });
     }
@@ -299,6 +346,10 @@ export default async function LearnerPlayerPage({
   if (boundedLessonId !== lessonId) {
     redirect(`/learn/${courseId}/${boundedLessonId}`);
   }
+
+  const completionPercent = courseCompletedOverride
+    ? 100
+    : Math.max(0, Math.min(100, progress?.completionPercent ?? Math.floor((completedLessonIds.size / Math.max(1, lessons.length)) * 100)));
 
   return (
     <LearnerPlayerClient

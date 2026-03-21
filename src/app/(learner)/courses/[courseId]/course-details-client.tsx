@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import * as React from "react";
-import { Search, Star, X, RotateCcw, CreditCard, Wallet, Smartphone, ShieldCheck } from "lucide-react";
+import { Search, Star, X, RotateCcw, CreditCard, Wallet, Smartphone, ShieldCheck, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,9 @@ export type CourseDetailsContentItem = {
   id: string;
   title: string;
   href: string;
+  visited: boolean;
   completed: boolean;
+  locked: boolean;
   unitId?: string | null;
   unitTitle?: string | null;
   unitSortOrder?: number | null;
@@ -561,6 +563,25 @@ export function CourseDetailsClient(props: {
                   }
 
                   const item = row.item;
+                  const state: "completed" | "visited" | "unvisited" = item.completed
+                    ? "completed"
+                    : item.visited
+                      ? "visited"
+                      : "unvisited";
+
+                  const statusClass =
+                    state === "completed"
+                      ? "border-emerald-600 bg-emerald-50"
+                      : state === "visited"
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-muted bg-white";
+                  const dotClass =
+                    state === "completed"
+                      ? "bg-emerald-600"
+                      : state === "visited"
+                        ? "bg-orange-500"
+                        : "";
+
                   return (
                     <div
                       key={item.id}
@@ -568,26 +589,52 @@ export function CourseDetailsClient(props: {
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <div className="text-lg font-semibold text-muted">#</div>
-                        <Link
-                          href={item.href}
-                          className="min-w-0 truncate text-sm font-medium text-primary hover:underline"
-                          title={item.title}
-                        >
-                          {item.title}
-                        </Link>
+                        {item.locked ? (
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <Lock className="h-4 w-4 shrink-0 text-muted" />
+                              <span
+                                className="min-w-0 truncate text-sm font-medium text-muted"
+                                title="Locked — complete previous content"
+                                aria-disabled="true"
+                              >
+                                {item.title}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted">Locked — complete previous content</div>
+                          </div>
+                        ) : (
+                          <Link
+                            href={item.href}
+                            className="min-w-0 truncate text-sm font-medium text-primary hover:underline"
+                            title={item.title}
+                          >
+                            {item.title}
+                          </Link>
+                        )}
                       </div>
 
                       <div
                         className={cn(
                           "flex h-5 w-5 items-center justify-center rounded-full border",
-                          item.completed
-                            ? "border-emerald-600 bg-emerald-50"
-                            : "border-muted bg-white",
+                          statusClass,
                         )}
-                        aria-label={item.completed ? "Completed" : "Incomplete"}
-                        title={item.completed ? "Completed" : "Incomplete"}
+                        aria-label={
+                          item.completed
+                            ? "Completed"
+                            : item.visited
+                              ? "Visited"
+                              : "Unvisited"
+                        }
+                        title={
+                          item.completed
+                            ? "Completed"
+                            : item.visited
+                              ? "Visited (not complete)"
+                              : "Unvisited"
+                        }
                       >
-                        {item.completed && <div className="h-2.5 w-2.5 rounded-full bg-emerald-600" />}
+                        {dotClass ? <div className={cn("h-2.5 w-2.5 rounded-full", dotClass)} /> : null}
                       </div>
                     </div>
                   );

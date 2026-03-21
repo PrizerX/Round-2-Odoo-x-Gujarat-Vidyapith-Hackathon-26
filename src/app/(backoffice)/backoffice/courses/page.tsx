@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { getSession } from "@/lib/auth/session";
 
 import { BackofficeCoursesClient, type BackofficeCourseListItem } from "./courses-client";
 
@@ -14,6 +15,8 @@ function splitTags(tagsText: string | null): string[] {
 export default async function BackofficeCoursesPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await getSession();
+
   const sp = props.searchParams ? await props.searchParams : {};
   const qRaw = sp?.q;
   const query = typeof qRaw === "string" ? qRaw.trim().slice(0, 80) : "";
@@ -24,7 +27,16 @@ export default async function BackofficeCoursesPage(props: {
   const viewRaw = sp?.view;
   const view = viewRaw === "kanban" || viewRaw === "list" ? viewRaw : "list";
 
+  const isInstructor = session?.user?.role === "instructor";
   const rows = await prisma.course.findMany({
+    where: isInstructor
+      ? {
+          OR: [
+            { responsibleId: session.user.id },
+            { courseAdminId: session.user.id },
+          ],
+        }
+      : undefined,
     orderBy: [{ updatedAt: "desc" }],
     select: {
       id: true,

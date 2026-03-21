@@ -7,16 +7,17 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Circle,
   Menu,
   PanelLeftClose,
   Paperclip,
+  Lock,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/cn";
+import { useRouter } from "next/navigation";
 
 export type QuizQuestion = {
   id: string;
@@ -49,7 +50,9 @@ export type PlayerLesson = {
   id: string;
   title: string;
   type: "video" | "doc" | "image" | "quiz";
+  visited: boolean;
   completed: boolean;
+  locked: boolean;
   description?: string;
   videoUrl?: string;
   allowDownload?: boolean;
@@ -725,10 +728,13 @@ export function LearnerPlayerClient(props: {
   lessons: PlayerLesson[];
   currentLessonId: string;
 }) {
+  const router = useRouter();
   const { courseId, courseTitle, completionPercent, lessons, currentLessonId } = props;
 
   const [collapsed, setCollapsed] = React.useState(false);
   const [courseCompleted, setCourseCompleted] = React.useState(false);
+  const [markBusy, setMarkBusy] = React.useState(false);
+  const [markError, setMarkError] = React.useState<string | null>(null);
 
   const currentIndex = Math.max(
     0,
@@ -740,7 +746,7 @@ export function LearnerPlayerClient(props: {
 
   const effectiveCompletionPercent = courseCompleted ? 100 : completionPercent;
   const effectiveLessons = courseCompleted
-    ? lessons.map((l) => ({ ...l, completed: true }))
+    ? lessons.map((l) => ({ ...l, visited: true, completed: true, locked: false }))
     : lessons;
 
   const unitGroups = React.useMemo(() => {
@@ -786,12 +792,99 @@ export function LearnerPlayerClient(props: {
 
   const currentEffective =
     courseCompleted && current
-      ? { ...current, completed: true }
+      ? { ...current, visited: true, completed: true, locked: false }
       : current;
 
   const renderLessonLink = (lesson: PlayerLesson) => {
     const active = lesson.id === currentLessonId;
     const label = lessonTypeLabel(lesson.type);
+
+    const state: "completed" | "visited" | "unvisited" = lesson.completed
+      ? "completed"
+      : lesson.visited
+        ? "visited"
+        : "unvisited";
+
+    const statusClass =
+      state === "completed"
+        ? "border-emerald-600 bg-emerald-50"
+        : state === "visited"
+          ? "border-orange-500 bg-orange-50"
+          : "border-muted bg-white";
+    const dotClass =
+      state === "completed"
+        ? "bg-emerald-600"
+        : state === "visited"
+          ? "bg-orange-500"
+          : "";
+
+    const content = (
+      <>
+        <div className={cn("flex items-start justify-between gap-3", collapsed && "justify-center")}>
+          <div className={cn("min-w-0", collapsed && "hidden")}>
+            <div className="text-xs font-semibold text-primary">{label}</div>
+            <div className="mt-1 line-clamp-2 text-sm font-medium text-foreground">{lesson.title}</div>
+            {!lesson.locked && (
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                <Paperclip className="h-3.5 w-3.5" />
+                <span>Additional attachments</span>
+              </div>
+            )}
+            {lesson.locked && (
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                <Lock className="h-3.5 w-3.5" />
+                <span>Locked — complete previous content</span>
+              </div>
+            )}
+          </div>
+
+          <div className={cn("flex items-center gap-2", collapsed && "flex-col")}
+          >
+            {lesson.locked && <Lock className={cn("h-4 w-4 text-muted", collapsed && "h-5 w-5")} aria-hidden="true" />}
+            <div
+              className={cn("flex h-6 w-6 items-center justify-center rounded-full border", statusClass)}
+              aria-label={
+                lesson.completed
+                  ? "Completed"
+                  : lesson.visited
+                    ? "Visited"
+                    : "Unvisited"
+              }
+              title={
+                lesson.completed
+                  ? "Completed"
+                  : lesson.visited
+                    ? "Visited (not complete)"
+                    : "Unvisited"
+              }
+            >
+              {dotClass ? <div className={cn("h-3 w-3 rounded-full", dotClass)} /> : null}
+            </div>
+          </div>
+        </div>
+
+        {collapsed && (
+          <div className="mt-2 flex items-center justify-center text-xs font-semibold text-primary">{label}</div>
+        )}
+      </>
+    );
+
+    if (lesson.locked) {
+      return (
+        <div
+          key={lesson.id}
+          className={cn(
+            "block cursor-not-allowed rounded-[14px] border border-border bg-surface px-3 py-3 opacity-70",
+            active ? "ring-2 ring-emerald-200" : "",
+            collapsed && "px-2",
+          )}
+          title="Locked — complete previous content"
+          aria-disabled="true"
+        >
+          {content}
+        </div>
+      );
+    }
 
     return (
       <Link
@@ -804,37 +897,7 @@ export function LearnerPlayerClient(props: {
         )}
         title={lesson.title}
       >
-        <div className={cn("flex items-start justify-between gap-3", collapsed && "justify-center")}> 
-          <div className={cn("min-w-0", collapsed && "hidden")}> 
-            <div className="text-xs font-semibold text-primary">{label}</div>
-            <div className="mt-1 line-clamp-2 text-sm font-medium text-foreground">
-              {lesson.title}
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-              <Paperclip className="h-3.5 w-3.5" />
-              <span>Additional attachments</span>
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full border",
-              lesson.completed
-                ? "border-emerald-600 bg-emerald-50"
-                : "border-muted bg-white",
-            )}
-            aria-label={lesson.completed ? "Completed" : "Incomplete"}
-            title={lesson.completed ? "Completed" : "Incomplete"}
-          >
-            {lesson.completed ? <div className="h-3 w-3 rounded-full bg-emerald-600" /> : null}
-          </div>
-        </div>
-
-        {collapsed && (
-          <div className="mt-2 flex items-center justify-center text-xs font-semibold text-primary">
-            {label}
-          </div>
-        )}
+        {content}
       </Link>
     );
   };
@@ -920,6 +983,17 @@ export function LearnerPlayerClient(props: {
             storageKey={currentEffective.quiz ? `${courseId}:${currentEffective.quiz.id}` : undefined}
             onCompleted={async (result) => {
               try {
+                // Mark the quiz lesson as complete (unlocks next content).
+                await fetch("/api/learning/lesson-progress", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ courseId, lessonId: currentLessonId, action: "complete" }),
+                });
+              } catch {
+                // ignore
+              }
+
+              try {
                 const res = await fetch("/api/learning/complete", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
@@ -937,11 +1011,58 @@ export function LearnerPlayerClient(props: {
               } catch {
                 // demo-only: ignore network errors
               }
+
+              router.refresh();
             }}
           />
         ) : (
           <PlayerContentViewer lesson={currentEffective} />
         )}
+
+        <div className="rounded-[16px] border border-border bg-surface p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-foreground">Lesson completion</div>
+            <div className="text-xs text-muted">
+              {currentEffective?.completed
+                ? "Completed"
+                : currentEffective?.visited
+                  ? "Visited (not complete)"
+                  : "Not visited"}
+            </div>
+          </div>
+
+          {markError && <div className="mt-2 text-sm text-red-700">{markError}</div>}
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={!currentEffective || currentEffective.completed || markBusy || courseCompleted}
+              onClick={async () => {
+                if (!currentEffective) return;
+                setMarkBusy(true);
+                setMarkError(null);
+                try {
+                  const res = await fetch("/api/learning/lesson-progress", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ courseId, lessonId: currentLessonId, action: "complete" }),
+                  });
+                  if (!res.ok) {
+                    const data = (await res.json().catch(() => null)) as any;
+                    throw new Error(typeof data?.error === "string" ? data.error : "Failed to mark complete");
+                  }
+                  router.refresh();
+                } catch (e) {
+                  setMarkError(e instanceof Error ? e.message : "Failed to mark complete");
+                } finally {
+                  setMarkBusy(false);
+                }
+              }}
+            >
+              {currentEffective?.completed ? "Completed" : markBusy ? "Marking…" : "Mark as complete"}
+            </Button>
+          </div>
+        </div>
 
         <div className="flex items-center justify-between gap-3">
           {prev ? (
@@ -958,7 +1079,7 @@ export function LearnerPlayerClient(props: {
             </Button>
           )}
 
-          {next ? (
+          {next && (courseCompleted || !!currentEffective?.completed) && !next.locked ? (
             <Link href={`/learn/${courseId}/${next.id}`}>
               <Button size="sm">
                 Next Content
@@ -966,7 +1087,7 @@ export function LearnerPlayerClient(props: {
               </Button>
             </Link>
           ) : (
-            <Button size="sm" disabled>
+            <Button size="sm" disabled title={!currentEffective?.completed ? "Mark current content complete to unlock next" : "Next content is locked"}>
               Next Content
               <ChevronRight className="h-4 w-4" />
             </Button>

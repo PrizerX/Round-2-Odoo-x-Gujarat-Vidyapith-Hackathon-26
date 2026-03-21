@@ -7,6 +7,20 @@ function isInstructorOrAdmin(role: string | undefined) {
   return role === "instructor" || role === "admin";
 }
 
+async function assertCourseAccess(args: {
+  courseId: string;
+  user: { id: string; role: string };
+}): Promise<"ok" | "not_found" | "forbidden"> {
+  const course = await prisma.course.findUnique({
+    where: { id: args.courseId },
+    select: { id: true, responsibleId: true, courseAdminId: true },
+  });
+  if (!course) return "not_found";
+  if (args.user.role === "admin") return "ok";
+  const owns = course.responsibleId === args.user.id || course.courseAdminId === args.user.id;
+  return owns ? "ok" : "forbidden";
+}
+
 type PatchBody = {
   title?: string;
   description?: string;
@@ -33,6 +47,14 @@ export async function PATCH(
   }
 
   const { courseId } = await ctx.params;
+
+  const access = await assertCourseAccess({ courseId, user: session.user });
+  if (access === "not_found") {
+    return NextResponse.json({ ok: false, error: "Course not found" }, { status: 404 });
+  }
+  if (access === "forbidden") {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
 
   let body: PatchBody = {};
   try {
@@ -154,6 +176,14 @@ export async function DELETE(
   }
 
   const { courseId } = await ctx.params;
+
+  const access = await assertCourseAccess({ courseId, user: session.user });
+  if (access === "not_found") {
+    return NextResponse.json({ ok: false, error: "Course not found" }, { status: 404 });
+  }
+  if (access === "forbidden") {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     await prisma.course.delete({ where: { id: courseId } });
