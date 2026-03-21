@@ -8,10 +8,11 @@ import { getDbProgressMapForUser } from "@/lib/learning/progress";
 
 import { LearnerCoursesClient, type LearnerCatalogCourseCard } from "./courses-client";
 
-export default async function LearnerCoursesPage(props: { searchParams?: { q?: string } }) {
+export default async function LearnerCoursesPage(props: { searchParams?: Promise<{ q?: string }> }) {
   const session = await getSession();
   const completedCourses = await getCompletedCourseIds(session?.user.id);
-  const initialQuery = props.searchParams?.q ?? "";
+  const searchParams = await props.searchParams;
+  const initialQuery = searchParams?.q ?? "";
 
   const userId = session?.user.id ?? null;
   const [enrolledIds, purchasedIds, dbProgress] = userId

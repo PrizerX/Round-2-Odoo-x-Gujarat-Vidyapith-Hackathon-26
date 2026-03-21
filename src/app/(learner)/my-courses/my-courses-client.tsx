@@ -4,10 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import * as React from "react";
 import { Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { BADGE_LEVELS, type BadgeLevel } from "@/lib/domain/gamification";
 import { cn } from "@/lib/cn";
@@ -19,6 +21,7 @@ export type MyCourseCard = {
   coverImageUrl?: string;
   tags: string[];
   completionPercent: number;
+  enrolled: boolean;
   cta: { label: string; href: string; disabled?: boolean };
   accessPill?: "Paid" | "Invitation";
   priceInr?: number;
@@ -81,7 +84,14 @@ export function MyCoursesClient(props: {
   badge: BadgeLevel;
   userName: string;
 }) {
+  const router = useRouter();
   const [query, setQuery] = React.useState("");
+  const [unenrollOpen, setUnenrollOpen] = React.useState(false);
+  const [unenrollCourse, setUnenrollCourse] = React.useState<
+    { id: string; title: string } | null
+  >(null);
+  const [unenrollBusy, setUnenrollBusy] = React.useState(false);
+  const [unenrollError, setUnenrollError] = React.useState<string | null>(null);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -89,12 +99,42 @@ export function MyCoursesClient(props: {
     return props.courses.filter((c) => c.title.toLowerCase().includes(q));
   }, [query, props.courses]);
 
+  async function handleConfirmUnenroll() {
+    if (!unenrollCourse) return;
+    setUnenrollError(null);
+    setUnenrollBusy(true);
+    try {
+      const res = await fetch("/api/courses/unenroll", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ courseId: unenrollCourse.id }),
+      });
+
+      if (res.status === 401) {
+        const data = (await res.json().catch(() => null)) as { redirect?: string } | null;
+        router.push(data?.redirect || "/auth/sign-in?next=/my-courses");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error("Unenroll failed");
+      }
+
+      router.refresh();
+    } catch {
+      setUnenrollError("Could not unenroll right now. Please try again.");
+    } finally {
+      setUnenrollBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-sm text-muted">My Courses</div>
           <h1 className="text-xl font-semibold">Welcome, {props.userName}</h1>
+          {unenrollError && <div className="mt-2 text-sm text-red-600">{unenrollError}</div>}
         </div>
 
         <div className="w-full sm:max-w-sm">
@@ -171,11 +211,25 @@ export function MyCoursesClient(props: {
                     </div>
 
                     <div className="flex items-center justify-between gap-3 pt-1">
-                      <Link href={course.cta.href} aria-disabled={course.cta.disabled}>
-                        <Button size="sm" disabled={course.cta.disabled}>
-                          {course.cta.label === "Buy" ? "Buy Course" : course.cta.label}
-                        </Button>
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={course.cta.href} aria-disabled={course.cta.disabled}>
+                          <Button size="sm" disabled={course.cta.disabled}>
+                            {course.cta.label === "Buy" ? "Buy Course" : course.cta.label}
+                          </Button>
+                        </Link>
+                        {course.enrolled && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setUnenrollCourse({ id: course.id, title: course.title });
+                              setUnenrollOpen(true);
+                            }}
+                          >
+                            Unenroll
+                          </Button>
+                        )}
+                      </div>
 
                       <Link
                         href={`/courses/${course.id}`}
@@ -243,6 +297,22 @@ export function MyCoursesClient(props: {
           </Card>
         </aside>
       </div>
+
+      <ConfirmDialog
+        open={unenrollOpen}
+        onOpenChange={setUnenrollOpen}
+        title="Unenroll from course"
+        description={
+          unenrollCourse
+            ? `This will remove you from ${unenrollCourse.title} and reset your progress.`
+            : "This will remove you from the course and reset your progress."
+        }
+        confirmText="Unenroll"
+        cancelText="Keep course"
+        danger
+        busy={unenrollBusy}
+        onConfirm={handleConfirmUnenroll}
+      />
     </div>
   );
 }

@@ -46,6 +46,17 @@ export async function POST(req: Request) {
     );
   }
 
+  const userExists = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true },
+  });
+  if (!userExists) {
+    return NextResponse.json(
+      { ok: false, error: "USER_NOT_FOUND", redirect: "/auth/sign-in?next=/courses" },
+      { status: 401 },
+    );
+  }
+
   let courseId = "";
   try {
     const body = (await req.json()) as { courseId?: string };
