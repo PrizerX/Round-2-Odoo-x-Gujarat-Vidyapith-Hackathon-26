@@ -17,25 +17,34 @@ import { CourseDetailsClient, type CourseDetailsContentItem } from "./course-det
 
 function buildContentList(args: {
   courseId: string;
-  lessonIdsInOrder: string[];
-  lessonTitlesInOrder: string[];
+  lessonsInOrder: Array<{
+    routeLessonId: string;
+    title: string;
+    unitId?: string | null;
+    unitTitle?: string | null;
+    unitSortOrder?: number | null;
+  }>;
   completionPercent: number;
 }): CourseDetailsContentItem[] {
-  const { courseId, lessonIdsInOrder, lessonTitlesInOrder, completionPercent } = args;
-  const safeLessonCount = Math.max(1, lessonIdsInOrder.length || 1);
+  const { courseId, lessonsInOrder, completionPercent } = args;
+  const safeLessonCount = Math.max(1, lessonsInOrder.length || 1);
   const completedCount = Math.floor(
     (Math.max(0, Math.min(100, completionPercent)) / 100) * safeLessonCount,
   );
 
   const items: CourseDetailsContentItem[] = [];
-  for (let i = 0; i < lessonIdsInOrder.length; i += 1) {
-    const id = lessonIdsInOrder[i] ?? `lesson_${i + 1}`;
-    const title = lessonTitlesInOrder[i] ?? `Content ${i + 1}`;
+  for (let i = 0; i < lessonsInOrder.length; i += 1) {
+    const lesson = lessonsInOrder[i];
+    const id = lesson?.routeLessonId ?? `lesson_${i + 1}`;
+    const title = lesson?.title ?? `Content ${i + 1}`;
     items.push({
       id,
       title,
       href: `/learn/${courseId}/${id}`,
       completed: i + 1 <= completedCount,
+      unitId: lesson?.unitId ?? null,
+      unitTitle: lesson?.unitTitle ?? null,
+      unitSortOrder: typeof lesson?.unitSortOrder === "number" ? lesson.unitSortOrder : null,
     });
   }
 
@@ -109,14 +118,12 @@ export default async function LearnerCourseDetailsPage({
     : (progress?.completionPercent ?? 0);
 
   const lessons = await getCourseLessonsForLearner({ courseId, session });
-  const lessonIdsInOrder = (lessons ?? []).map((l) => l.routeLessonId);
-  const lessonTitlesInOrder = (lessons ?? []).map((l) => l.title);
-  const lessonCount = Math.max(1, lessonIdsInOrder.length || course.lessonCount || 1);
+  const lessonsInOrder = lessons ?? [];
+  const lessonCount = Math.max(1, lessonsInOrder.length || course.lessonCount || 1);
   const counts = computeCounts({ lessonCount, completionPercent });
   const content = buildContentList({
     courseId,
-    lessonIdsInOrder,
-    lessonTitlesInOrder,
+    lessonsInOrder,
     completionPercent: counts.completionPercent,
   });
 

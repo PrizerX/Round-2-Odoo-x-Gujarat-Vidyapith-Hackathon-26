@@ -22,7 +22,8 @@ export type QuizQuestion = {
   id: string;
   prompt: string;
   options: string[];
-  correctIndex: number;
+  allowMultipleCorrect: boolean;
+  correctIndices: number[];
 };
 
 export type QuizDefinition = {
@@ -43,6 +44,9 @@ export type PlayerLesson = {
   description?: string;
   videoUrl?: string;
   quiz?: QuizDefinition;
+  unitId?: string | null;
+  unitTitle?: string | null;
+  unitSortOrder?: number | null;
 };
 
 function lessonTypeLabel(type: PlayerLesson["type"]): string {
@@ -154,7 +158,7 @@ function QuizViewer(props: {
     "intro",
   );
   const [index, setIndex] = React.useState(0);
-  const [answers, setAnswers] = React.useState<Record<string, number>>({});
+  const [answers, setAnswers] = React.useState<Record<string, number[]>>({});
   const [attempt, setAttempt] = React.useState(0);
   const [attemptId, setAttemptId] = React.useState<string | undefined>(undefined);
   const [resultOpen, setResultOpen] = React.useState(false);
@@ -220,8 +224,8 @@ function QuizViewer(props: {
     );
   }
 
-  const selectedIndex = current ? answers[current.id] : undefined;
-  const canProceed = typeof selectedIndex === "number";
+  const selectedIndices = current ? (answers[current.id] ?? []) : [];
+  const canProceed = selectedIndices.length > 0;
 
   const pointsPerCorrectForAttempt = (attemptNumber: number) => {
     const byAttempt = quiz.pointsPerCorrectByAttempt;
@@ -242,8 +246,15 @@ function QuizViewer(props: {
   const scoreQuiz = (attemptNumber: number) => {
     let correct = 0;
     for (const q of questions) {
-      const a = answers[q.id];
-      if (typeof a === "number" && a === q.correctIndex) correct += 1;
+      const selected = answers[q.id] ?? [];
+      const selectedSet = Array.from(new Set(selected)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+      const correctSet = Array.from(new Set(q.correctIndices ?? [])).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+
+      const isMatch =
+        selectedSet.length === correctSet.length &&
+        selectedSet.every((v, i) => v === correctSet[i]);
+
+      if (isMatch) correct += 1;
     }
 
     const perCorrect = pointsPerCorrectForAttempt(attemptNumber);
@@ -378,11 +389,14 @@ function QuizViewer(props: {
 
       <div className="rounded-[16px] border border-border bg-surface p-5">
         <div className="text-sm font-medium text-foreground">{current?.prompt ?? "Question"}</div>
+        <div className="mt-1 text-xs text-muted">
+          {current?.allowMultipleCorrect ? "Select all that apply" : "Select one option"}
+        </div>
       </div>
 
       <div className="space-y-3">
         {(current?.options ?? []).map((opt, i) => {
-          const selected = selectedIndex === i;
+          const selected = selectedIndices.includes(i);
           return (
             <button
               key={opt}
@@ -393,17 +407,31 @@ function QuizViewer(props: {
               )}
               onClick={() => {
                 if (!current) return;
-                setAnswers((prev) => ({ ...prev, [current.id]: i }));
+                setAnswers((prev) => {
+                  const prevSelected = prev[current.id] ?? [];
+                  if (current.allowMultipleCorrect) {
+                    const exists = prevSelected.includes(i);
+                    const next = exists ? prevSelected.filter((x) => x !== i) : [...prevSelected, i];
+                    return { ...prev, [current.id]: next };
+                  }
+                  return { ...prev, [current.id]: [i] };
+                });
               }}
             >
               <span
                 className={cn(
-                  "flex h-5 w-5 items-center justify-center rounded-full border",
+                  current?.allowMultipleCorrect
+                    ? "flex h-5 w-5 items-center justify-center rounded-[6px] border"
+                    : "flex h-5 w-5 items-center justify-center rounded-full border",
                   selected ? "border-emerald-600 bg-emerald-50" : "border-muted bg-white",
                 )}
                 aria-hidden="true"
               >
-                {selected && <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />}
+                {selected && (
+                  current?.allowMultipleCorrect
+                    ? <span className="h-2.5 w-2.5 rounded-[3px] bg-emerald-600" />
+                    : <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                )}
               </span>
               <span className="text-sm text-foreground">{opt}</span>
             </button>
@@ -496,10 +524,101 @@ export function LearnerPlayerClient(props: {
     ? lessons.map((l) => ({ ...l, completed: true }))
     : lessons;
 
+  const unitGroups = React.useMemo(() => {
+    const byUnit = new Map<
+      string,
+      { id: string; title: string; sortOrder: number | null; lessons: PlayerLesson[] }
+    >();
+    const unassigned: PlayerLesson[] = [];
+
+    for (const lesson of effectiveLessons) {
+      const unitId = typeof lesson.unitId === "string" && lesson.unitId ? lesson.unitId : null;
+      const unitTitle = typeof lesson.unitTitle === "string" && lesson.unitTitle ? lesson.unitTitle : null;
+      if (!unitId || !unitTitle) {
+        unassigned.push(lesson);
+        continue;
+      }
+
+      const existing = byUnit.get(unitId);
+      if (existing) {
+        existing.lessons.push(lesson);
+        continue;
+      }
+
+      byUnit.set(unitId, {
+        id: unitId,
+        title: unitTitle,
+        sortOrder: typeof lesson.unitSortOrder === "number" ? lesson.unitSortOrder : null,
+        lessons: [lesson],
+      });
+    }
+
+    if (byUnit.size === 0) return null;
+
+    const units = Array.from(byUnit.values()).sort((a, b) => {
+      const ao = a.sortOrder ?? 1e9;
+      const bo = b.sortOrder ?? 1e9;
+      if (ao !== bo) return ao - bo;
+      return a.title.localeCompare(b.title);
+    });
+
+    return { units, unassigned };
+  }, [effectiveLessons]);
+
   const currentEffective =
     courseCompleted && current
       ? { ...current, completed: true }
       : current;
+
+  const renderLessonLink = (lesson: PlayerLesson) => {
+    const active = lesson.id === currentLessonId;
+    const label = lessonTypeLabel(lesson.type);
+
+    return (
+      <Link
+        key={lesson.id}
+        href={`/learn/${courseId}/${lesson.id}`}
+        className={cn(
+          "block rounded-[14px] border border-border bg-surface px-3 py-3 transition-colors",
+          active ? "ring-2 ring-emerald-200" : "hover:bg-accent",
+          collapsed && "px-2",
+        )}
+        title={lesson.title}
+      >
+        <div className={cn("flex items-start justify-between gap-3", collapsed && "justify-center")}> 
+          <div className={cn("min-w-0", collapsed && "hidden")}> 
+            <div className="text-xs font-semibold text-primary">{label}</div>
+            <div className="mt-1 line-clamp-2 text-sm font-medium text-foreground">
+              {lesson.title}
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+              <Paperclip className="h-3.5 w-3.5" />
+              <span>Additional attachments</span>
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "flex h-6 w-6 items-center justify-center rounded-full border",
+              lesson.completed
+                ? "border-emerald-600 bg-emerald-50"
+                : "border-muted bg-white",
+            )}
+            aria-label={lesson.completed ? "Completed" : "Incomplete"}
+            title={lesson.completed ? "Completed" : "Incomplete"}
+          >
+            {lesson.completed ? <div className="h-3 w-3 rounded-full bg-emerald-600" /> : null}
+          </div>
+        </div>
+
+        {collapsed && (
+          <div className="mt-2 flex items-center justify-center text-xs font-semibold text-primary">
+            {label}
+          </div>
+        )}
+      </Link>
+    );
+  };
 
   return (
     <div className={cn("grid gap-4", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[340px_1fr]")}> 
@@ -540,55 +659,29 @@ export function LearnerPlayerClient(props: {
         </div>
 
         <div className={cn("mt-4 space-y-2", collapsed && "mt-3")}> 
-          {effectiveLessons.map((lesson) => {
-            const active = lesson.id === currentLessonId;
-            const label = lessonTypeLabel(lesson.type);
-
-            return (
-              <Link
-                key={lesson.id}
-                href={`/learn/${courseId}/${lesson.id}`}
-                className={cn(
-                  "block rounded-[14px] border border-border bg-surface px-3 py-3 transition-colors",
-                  active ? "ring-2 ring-emerald-200" : "hover:bg-accent",
-                  collapsed && "px-2",
-                )}
-                title={lesson.title}
-              >
-                <div className={cn("flex items-start justify-between gap-3", collapsed && "justify-center")}> 
-                  <div className={cn("min-w-0", collapsed && "hidden")}> 
-                    <div className="text-xs font-semibold text-primary">{label}</div>
-                    <div className="mt-1 line-clamp-2 text-sm font-medium text-foreground">
-                      {lesson.title}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                      <Paperclip className="h-3.5 w-3.5" />
-                      <span>Additional attachments</span>
-                    </div>
-                  </div>
-
-                  <div
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full border",
-                      lesson.completed
-                        ? "border-emerald-600 bg-emerald-50"
-                        : "border-muted bg-white",
-                    )}
-                    aria-label={lesson.completed ? "Completed" : "Incomplete"}
-                    title={lesson.completed ? "Completed" : "Incomplete"}
-                  >
-                    {lesson.completed ? <div className="h-3 w-3 rounded-full bg-emerald-600" /> : null}
-                  </div>
+          {unitGroups ? (
+            <div className={cn("space-y-4", collapsed && "space-y-2")}>
+              {unitGroups.units.map((u) => (
+                <div key={u.id} className={cn("space-y-2", collapsed && "space-y-2")}>
+                  {!collapsed && (
+                    <div className="px-1 pt-1 text-xs font-semibold text-muted">{u.title}</div>
+                  )}
+                  <div className="space-y-2">{u.lessons.map(renderLessonLink)}</div>
                 </div>
+              ))}
 
-                {collapsed && (
-                  <div className="mt-2 flex items-center justify-center text-xs font-semibold text-primary">
-                    {label}
-                  </div>
-                )}
-              </Link>
-            );
-          })}
+              {unitGroups.unassigned.length > 0 ? (
+                <div className="space-y-2">
+                  {!collapsed && (
+                    <div className="px-1 pt-1 text-xs font-semibold text-muted">Unassigned</div>
+                  )}
+                  <div className="space-y-2">{unitGroups.unassigned.map(renderLessonLink)}</div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            effectiveLessons.map(renderLessonLink)
+          )}
         </div>
       </aside>
 

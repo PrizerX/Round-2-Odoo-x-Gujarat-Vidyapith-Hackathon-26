@@ -149,6 +149,9 @@ export type DbCourseLesson = {
   routeLessonId: string;
   title: string;
   type: "video" | "doc" | "image" | "quiz";
+  unitId?: string | null;
+  unitTitle?: string | null;
+  unitSortOrder?: number | null;
   description?: string | null;
   videoUrl?: string | null;
   sortOrder: number;
@@ -171,11 +174,12 @@ export async function getCourseLessonsForLearner(args: {
   const course = await getCourseForLearnerById({ courseId, session });
   if (!course) return null;
 
-  const lessons = (await prisma.lesson.findMany({
+  const lessons = await prisma.lesson.findMany({
     where: { courseId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,
+      unitId: true,
       title: true,
       type: true,
       sortOrder: true,
@@ -183,8 +187,17 @@ export async function getCourseLessonsForLearner(args: {
       videoUrl: true,
       durationMinutes: true,
     },
-  })) as unknown as Array<{
+  });
+
+  const units = (await prisma.courseUnit.findMany({
+    where: { courseId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, title: true, sortOrder: true },
+  })) as unknown as Array<{ id: string; title: string; sortOrder: number }>;
+
+  const typedLessons = lessons as unknown as Array<{
     id: string;
+    unitId: string | null;
     title: string;
     type: DbCourseLesson["type"];
     sortOrder: number;
@@ -193,13 +206,21 @@ export async function getCourseLessonsForLearner(args: {
     durationMinutes: number | null;
   }>;
 
-  return lessons.map((l) => ({
+  const unitById = new Map(units.map((u) => [u.id, u] as const));
+
+  return typedLessons.map((l) => {
+    const unit = l.unitId ? unitById.get(l.unitId) : undefined;
+    return {
     routeLessonId: toRouteLessonId(courseId, l.id),
     title: l.title,
     type: l.type,
+    unitId: l.unitId,
+    unitTitle: unit?.title ?? null,
+    unitSortOrder: typeof unit?.sortOrder === "number" ? unit.sortOrder : null,
     sortOrder: l.sortOrder,
     description: l.description,
     videoUrl: l.videoUrl,
     durationMinutes: l.durationMinutes,
-  }));
+    };
+  });
 }

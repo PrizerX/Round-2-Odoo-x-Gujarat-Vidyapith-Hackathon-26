@@ -4,7 +4,8 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, List, Share2, Plus } from "lucide-react";
+import { createPortal } from "react-dom";
+import { LayoutGrid, List, Share2, Plus, MoreVertical } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export type BackofficeCourseListItem = {
   id: string;
@@ -29,6 +31,92 @@ export type BackofficeCourseListItem = {
 
 type DashboardView = "list" | "kanban";
 
+function CourseActionsMenu(props: {
+  open: boolean;
+  anchorEl: HTMLButtonElement | null;
+  courseId: string;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  const [mounted, setMounted] = React.useState(false);
+  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const computePos = React.useCallback(() => {
+    if (!props.anchorEl) return;
+    const rect = props.anchorEl.getBoundingClientRect();
+    const menuWidth = 170;
+    const viewportW = typeof window !== "undefined" ? window.innerWidth : 1024;
+
+    const left = Math.max(8, Math.min(viewportW - menuWidth - 8, rect.left));
+    const top = rect.bottom + 6;
+    setPos({ top, left });
+  }, [props.anchorEl]);
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    computePos();
+    const onScroll = () => computePos();
+    const onResize = () => computePos();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [props.open, computePos]);
+
+  React.useEffect(() => {
+    if (!props.open) return;
+    const onDocClick = () => props.onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") props.onClose();
+    };
+    document.addEventListener("click", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [props.open, props.onClose]);
+
+  if (!mounted || !props.open || !pos) return null;
+
+  return createPortal(
+    <div
+      className="fixed z-[9999] w-[170px] rounded-[12px] border border-border bg-background p-1 shadow-sm"
+      style={{ top: pos.top, left: pos.left }}
+      onClick={(e) => e.stopPropagation()}
+      role="menu"
+      aria-label="Course actions"
+    >
+      <Link
+        href={`/backoffice/courses/${props.courseId}`}
+        className="block rounded-[10px] px-3 py-2 text-sm hover:bg-accent"
+        onClick={props.onClose}
+        role="menuitem"
+      >
+        Edit
+      </Link>
+      <button
+        type="button"
+        className="block w-full rounded-[10px] px-3 py-2 text-left text-sm text-red-700 hover:bg-accent"
+        onClick={() => {
+          props.onClose();
+          props.onDelete();
+        }}
+        role="menuitem"
+      >
+        Delete
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 function formatDuration(minutes: number): string {
   if (!minutes || minutes <= 0) return "0m";
   const h = Math.floor(minutes / 60);
@@ -45,6 +133,41 @@ function buildBackofficeCoursesHref(args: { q: string; view: DashboardView }): s
   if (args.view && args.view !== "list") params.set("view", args.view);
   const qs = params.toString();
   return qs ? `/backoffice/courses?${qs}` : "/backoffice/courses";
+}
+
+function isStockCourseImageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  // Seeded/demo covers live here; we want gradients instead of the stock image.
+  return url.includes("/images/courses/") || url.includes("\\images\\courses\\");
+}
+
+const COURSE_GRADIENTS: Array<[string, string]> = [
+  ["#fb7185", "#f97316"],
+  ["#f97316", "#facc15"],
+  ["#22c55e", "#06b6d4"],
+  ["#06b6d4", "#3b82f6"],
+  ["#3b82f6", "#8b5cf6"],
+  ["#8b5cf6", "#ec4899"],
+  ["#10b981", "#84cc16"],
+  ["#ef4444", "#f59e0b"],
+];
+
+function hashToIndex(value: string, mod: number): number {
+  // Small deterministic hash (FNV-1a-ish) for stable gradients per course.
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % mod;
+}
+
+function courseGradientStyle(courseId: string): React.CSSProperties {
+  const idx = hashToIndex(courseId, COURSE_GRADIENTS.length);
+  const [a, b] = COURSE_GRADIENTS[idx];
+  return {
+    backgroundImage: `linear-gradient(135deg, ${a}, ${b})`,
+  };
 }
 
 function CourseStatsRow(props: { views: number; lessonCount: number; durationMinutes: number }) {
@@ -94,8 +217,13 @@ export function BackofficeCoursesClient(props: {
   const [createOpen, setCreateOpen] = React.useState(!!props.initialCreateOpen);
   const [createBusy, setCreateBusy] = React.useState(false);
   const [title, setTitle] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [shareId, setShareId] = React.useState<string | null>(null);
+  const [openMenuCourseId, setOpenMenuCourseId] = React.useState<string | null>(null);
+  const [deleteCourseId, setDeleteCourseId] = React.useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
+  const menuButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
 
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,12 +250,12 @@ export function BackofficeCoursesClient(props: {
   const onCreate = async () => {
     const safeTitle = title.trim().slice(0, 120);
     if (!safeTitle) {
-      setError("Course name is required.");
+      setCreateError("Course name is required.");
       return;
     }
 
     setCreateBusy(true);
-    setError(null);
+    setCreateError(null);
     try {
       const res = await fetch("/api/backoffice/courses", {
         method: "POST",
@@ -137,7 +265,7 @@ export function BackofficeCoursesClient(props: {
 
       const data = (await res.json().catch(() => null)) as any;
       if (!res.ok || !data?.ok || typeof data.courseId !== "string") {
-        setError(typeof data?.error === "string" ? data.error : "Failed to create course.");
+        setCreateError(typeof data?.error === "string" ? data.error : "Failed to create course.");
         return;
       }
 
@@ -147,6 +275,26 @@ export function BackofficeCoursesClient(props: {
       router.refresh();
     } finally {
       setCreateBusy(false);
+    }
+  };
+
+  const onDeleteCourse = async (courseId: string) => {
+    setDeleteBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/backoffice/courses/${encodeURIComponent(courseId)}`, {
+        method: "DELETE",
+      });
+
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok) {
+        setActionError(typeof data?.error === "string" ? data.error : "Failed to delete course.");
+        return;
+      }
+
+      router.refresh();
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -212,6 +360,12 @@ export function BackofficeCoursesClient(props: {
         </Button>
       </form>
 
+      {actionError && (
+        <div className="rounded-[12px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
+
       {view === "kanban" ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <KanbanColumn
@@ -221,7 +375,7 @@ export function BackofficeCoursesClient(props: {
             {props.courses
               .filter((c) => !c.published)
               .map((c) => (
-                <Card key={c.id} className="overflow-hidden">
+                <Card key={c.id} className="relative overflow-hidden">
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -240,9 +394,19 @@ export function BackofficeCoursesClient(props: {
                       {(!c.tags || c.tags.length === 0) && <span className="text-xs text-muted">No tags</span>}
                     </div>
                     <div className="flex items-center justify-between">
-                      <Link href={`/backoffice/courses/${c.id}`} className="text-sm font-medium text-primary">
-                        Edit
-                      </Link>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-background hover:bg-accent"
+                          aria-label="Course actions"
+                          ref={(el) => {
+                            menuButtonRefs.current[c.id] = el;
+                          }}
+                          onClick={() => setOpenMenuCourseId((v) => (v === c.id ? null : c.id))}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </div>
                       <button
                         type="button"
                         className="inline-flex items-center gap-2 text-sm font-medium text-primary"
@@ -289,9 +453,19 @@ export function BackofficeCoursesClient(props: {
                       {(!c.tags || c.tags.length === 0) && <span className="text-xs text-muted">No tags</span>}
                     </div>
                     <div className="flex items-center justify-between">
-                      <Link href={`/backoffice/courses/${c.id}`} className="text-sm font-medium text-primary">
-                        Edit
-                      </Link>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-background hover:bg-accent"
+                          aria-label="Course actions"
+                          ref={(el) => {
+                            menuButtonRefs.current[c.id] = el;
+                          }}
+                          onClick={() => setOpenMenuCourseId((v) => (v === c.id ? null : c.id))}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </div>
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
@@ -315,6 +489,7 @@ export function BackofficeCoursesClient(props: {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {props.courses.map((c) => {
             const thumb = c.thumbnailUrl || c.coverUrl || c.bannerUrl;
+            const cover = thumb && !isStockCourseImageUrl(thumb) ? thumb : null;
             return (
               <Card key={c.id} className="relative overflow-hidden">
                 {c.published && (
@@ -325,11 +500,13 @@ export function BackofficeCoursesClient(props: {
                     Published
                   </div>
                 )}
-                <div className="relative h-28 w-full bg-accent">
-                  {thumb ? (
-                    <Image src={thumb} alt="Course image" fill className="object-cover" />
+                <div className="relative h-28 w-full overflow-hidden bg-accent">
+                  {cover ? (
+                    <Image src={cover} alt="Course image" fill className="object-cover" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-muted">No image</div>
+                    <div className="h-full w-full" style={courseGradientStyle(c.id)}>
+                      <div className="h-full w-full bg-black/10" />
+                    </div>
                   )}
                 </div>
 
@@ -357,9 +534,19 @@ export function BackofficeCoursesClient(props: {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <Link href={`/backoffice/courses/${c.id}`} className="text-sm font-medium text-primary">
-                      Edit
-                    </Link>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-background hover:bg-accent"
+                        aria-label="Course actions"
+                        ref={(el) => {
+                          menuButtonRefs.current[c.id] = el;
+                        }}
+                        onClick={() => setOpenMenuCourseId((v) => (v === c.id ? null : c.id))}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-3">
                       <button
@@ -389,7 +576,7 @@ export function BackofficeCoursesClient(props: {
           setCreateOpen(v);
           if (!v) {
             setTitle("");
-            setError(null);
+            setCreateError(null);
           }
         }}
         title="Create course"
@@ -413,9 +600,37 @@ export function BackofficeCoursesClient(props: {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g., Sales CRM Fundamentals"
           />
-          {error && <div className="text-sm text-red-600">{error}</div>}
+          {createError && <div className="text-sm text-red-600">{createError}</div>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteCourseId !== null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteCourseId(null);
+        }}
+        title="Delete course?"
+        description="This will permanently delete the course and all its contents."
+        confirmText={deleteBusy ? "Deleting..." : "Delete"}
+        danger
+        onConfirm={async () => {
+          if (!deleteCourseId || deleteBusy) return;
+          const id = deleteCourseId;
+          setDeleteCourseId(null);
+          await onDeleteCourse(id);
+        }}
+      />
+
+      <CourseActionsMenu
+        open={openMenuCourseId !== null}
+        anchorEl={openMenuCourseId ? menuButtonRefs.current[openMenuCourseId] ?? null : null}
+        courseId={openMenuCourseId ?? ""}
+        onClose={() => setOpenMenuCourseId(null)}
+        onDelete={() => {
+          if (!openMenuCourseId) return;
+          setDeleteCourseId(openMenuCourseId);
+        }}
+      />
 
       <button
         type="button"

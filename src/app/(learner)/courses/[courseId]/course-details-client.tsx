@@ -19,6 +19,9 @@ export type CourseDetailsContentItem = {
   title: string;
   href: string;
   completed: boolean;
+  unitId?: string | null;
+  unitTitle?: string | null;
+  unitSortOrder?: number | null;
 };
 
 type Viewer = {
@@ -313,6 +316,47 @@ export function CourseDetailsClient(props: {
     return props.content.filter((c) => c.title.toLowerCase().includes(q));
   }, [query, props.content]);
 
+  const grouped = React.useMemo(() => {
+    const q = query.trim();
+    if (q) return null;
+
+    const byUnit = new Map<
+      string,
+      { id: string; title: string; sortOrder: number | null; items: CourseDetailsContentItem[] }
+    >();
+    const unassigned: CourseDetailsContentItem[] = [];
+
+    for (const item of props.content) {
+      const unitId = typeof item.unitId === "string" && item.unitId ? item.unitId : null;
+      const unitTitle = typeof item.unitTitle === "string" && item.unitTitle ? item.unitTitle : null;
+      if (!unitId || !unitTitle) {
+        unassigned.push(item);
+        continue;
+      }
+
+      const existing = byUnit.get(unitId);
+      if (existing) {
+        existing.items.push(item);
+        continue;
+      }
+      byUnit.set(unitId, {
+        id: unitId,
+        title: unitTitle,
+        sortOrder: typeof item.unitSortOrder === "number" ? item.unitSortOrder : null,
+        items: [item],
+      });
+    }
+
+    const units = Array.from(byUnit.values()).sort((a, b) => {
+      const ao = a.sortOrder ?? 1e9;
+      const bo = b.sortOrder ?? 1e9;
+      if (ao !== bo) return ao - bo;
+      return a.title.localeCompare(b.title);
+    });
+
+    return { units, unassigned };
+  }, [props.content, query]);
+
   const bannerSrc = props.bannerImageUrl ?? props.coverImageUrl;
   const isPaidCta = props.cta.label === "Buy";
   const priceLabel = typeof props.priceInr === "number" ? `₹${props.priceInr}` : "₹0";
@@ -490,36 +534,64 @@ export function CourseDetailsClient(props: {
               <div className="border-t border-border" />
 
               <div className="space-y-2">
-                {filtered.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-3 rounded-[12px] border border-border bg-surface px-3 py-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="text-lg font-semibold text-muted">#</div>
-                      <Link
-                        href={item.href}
-                        className="min-w-0 truncate text-sm font-medium text-primary hover:underline"
-                        title={item.title}
+                {(grouped
+                  ? [
+                      ...grouped.units.flatMap((u) => [
+                        { kind: "unit" as const, id: u.id, title: u.title },
+                        ...u.items.map((it) => ({ kind: "lesson" as const, item: it })),
+                      ]),
+                      ...(grouped.unassigned.length
+                        ? [
+                            { kind: "unit" as const, id: "__unassigned", title: "Unassigned" },
+                            ...grouped.unassigned.map((it) => ({ kind: "lesson" as const, item: it })),
+                          ]
+                        : []),
+                    ]
+                  : filtered.map((it) => ({ kind: "lesson" as const, item: it }))
+                ).map((row, idx) => {
+                  if (row.kind === "unit") {
+                    return (
+                      <div
+                        key={`unit_${row.id}_${idx}`}
+                        className="px-1 pt-3 text-xs font-semibold text-muted"
                       >
-                        {item.title}
-                      </Link>
-                    </div>
+                        {row.title}
+                      </div>
+                    );
+                  }
 
+                  const item = row.item;
+                  return (
                     <div
-                      className={cn(
-                        "flex h-5 w-5 items-center justify-center rounded-full border",
-                        item.completed
-                          ? "border-emerald-600 bg-emerald-50"
-                          : "border-muted bg-white",
-                      )}
-                      aria-label={item.completed ? "Completed" : "Incomplete"}
-                      title={item.completed ? "Completed" : "Incomplete"}
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 rounded-[12px] border border-border bg-surface px-3 py-3"
                     >
-                      {item.completed && <div className="h-2.5 w-2.5 rounded-full bg-emerald-600" />}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="text-lg font-semibold text-muted">#</div>
+                        <Link
+                          href={item.href}
+                          className="min-w-0 truncate text-sm font-medium text-primary hover:underline"
+                          title={item.title}
+                        >
+                          {item.title}
+                        </Link>
+                      </div>
+
+                      <div
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded-full border",
+                          item.completed
+                            ? "border-emerald-600 bg-emerald-50"
+                            : "border-muted bg-white",
+                        )}
+                        aria-label={item.completed ? "Completed" : "Incomplete"}
+                        title={item.completed ? "Completed" : "Incomplete"}
+                      >
+                        {item.completed && <div className="h-2.5 w-2.5 rounded-full bg-emerald-600" />}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {filtered.length === 0 && (
                   <div className="rounded-[12px] border border-border bg-accent p-4 text-sm text-muted">

@@ -14,6 +14,7 @@ function isBackofficeViewer(role: string | undefined): boolean {
 function buildPlayerLessons(args: {
   courseId: string;
   completionPercent: number;
+  units: Array<{ id: string; title: string; sortOrder: number }>;
   rows: Array<{
     id: string;
     title: string;
@@ -21,6 +22,7 @@ function buildPlayerLessons(args: {
     description: string | null;
     videoUrl: string | null;
     sortOrder: number;
+    unitId: string | null;
     quiz: null | {
       id: string;
       title: string;
@@ -30,6 +32,7 @@ function buildPlayerLessons(args: {
       questions: Array<{
         id: string;
         prompt: string;
+        allowMultipleCorrect: boolean;
         sortOrder: number;
         options: Array<{ text: string; sortOrder: number; isCorrect: boolean }>;
       }>;
@@ -39,7 +42,10 @@ function buildPlayerLessons(args: {
   const safePercent = Math.max(0, Math.min(100, args.completionPercent));
   const completedCount = Math.floor((safePercent / 100) * Math.max(1, args.rows.length));
 
+  const unitById = new Map(args.units.map((u) => [u.id, u] as const));
+
   return args.rows.map((l, idx) => {
+    const unit = l.unitId ? unitById.get(l.unitId) : undefined;
     const quiz = l.quiz
       ? {
           id: l.quiz.id,
@@ -55,12 +61,17 @@ function buildPlayerLessons(args: {
             .sort((a, b) => a.sortOrder - b.sortOrder)
             .map((q) => {
               const opts = (q.options ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
-              const correctIndex = Math.max(0, opts.findIndex((o) => o.isCorrect));
+              const allowMultipleCorrect = !!q.allowMultipleCorrect;
+              const correctIndicesRaw = opts
+                .map((o, i) => (o.isCorrect ? i : -1))
+                .filter((i) => i >= 0);
+              const correctIndices = correctIndicesRaw.length > 0 ? correctIndicesRaw : [0];
               return {
                 id: q.id,
                 prompt: q.prompt,
                 options: opts.map((o) => o.text),
-                correctIndex,
+                allowMultipleCorrect,
+                correctIndices: allowMultipleCorrect ? correctIndices : [correctIndices[0] ?? 0],
               };
             }),
         }
@@ -74,6 +85,9 @@ function buildPlayerLessons(args: {
       description: l.description ?? undefined,
       videoUrl: l.videoUrl ?? undefined,
       quiz,
+      unitId: l.unitId ?? null,
+      unitTitle: unit?.title ?? null,
+      unitSortOrder: unit?.sortOrder ?? null,
     };
   });
 }
@@ -159,6 +173,12 @@ export default async function LearnerPlayerPage({
     ? 100
     : (progress?.completionPercent ?? 0);
 
+  const unitRows = await prisma.courseUnit.findMany({
+    where: { courseId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, title: true, sortOrder: true },
+  });
+
   const lessonRows = (await prisma.lesson.findMany({
     where: { courseId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -169,6 +189,7 @@ export default async function LearnerPlayerPage({
       description: true,
       videoUrl: true,
       sortOrder: true,
+      unitId: true,
       quiz: {
         select: {
           id: true,
@@ -180,6 +201,7 @@ export default async function LearnerPlayerPage({
             select: {
               id: true,
               prompt: true,
+              allowMultipleCorrect: true,
               sortOrder: true,
               options: { select: { text: true, sortOrder: true, isCorrect: true } },
             },
@@ -192,6 +214,7 @@ export default async function LearnerPlayerPage({
   const lessons = buildPlayerLessons({
     courseId,
     completionPercent,
+    units: unitRows,
     rows: lessonRows,
   });
 

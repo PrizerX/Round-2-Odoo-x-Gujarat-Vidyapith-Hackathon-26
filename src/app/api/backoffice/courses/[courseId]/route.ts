@@ -12,6 +12,11 @@ type PatchBody = {
   description?: string;
   tagsText?: string;
   website?: string | null;
+  thumbnailUrl?: string | null;
+  coverUrl?: string | null;
+  bannerUrl?: string | null;
+  responsibleId?: string | null;
+  courseAdminId?: string | null;
   published?: boolean;
   visibility?: "everyone" | "signed_in";
   accessRule?: "open" | "invitation" | "payment";
@@ -44,6 +49,59 @@ export async function PATCH(
 
   if (body.website === null) update.website = null;
   if (typeof body.website === "string") update.website = body.website.trim().slice(0, 240);
+
+  if (body.thumbnailUrl === null) update.thumbnailUrl = null;
+  if (typeof body.thumbnailUrl === "string") update.thumbnailUrl = body.thumbnailUrl.trim().slice(0, 500);
+
+  if (body.coverUrl === null) update.coverUrl = null;
+  if (typeof body.coverUrl === "string") update.coverUrl = body.coverUrl.trim().slice(0, 500);
+
+  if (body.bannerUrl === null) update.bannerUrl = null;
+  if (typeof body.bannerUrl === "string") update.bannerUrl = body.bannerUrl.trim().slice(0, 500);
+
+  if (body.responsibleId === null) {
+    update.responsibleId = null;
+  }
+  if (typeof body.responsibleId === "string") {
+    const responsibleId = body.responsibleId.trim().slice(0, 80);
+    if (!responsibleId) {
+      update.responsibleId = null;
+    } else {
+      const u = await prisma.user.findUnique({
+        where: { id: responsibleId },
+        select: { id: true, role: true },
+      });
+      if (!u || (u.role !== "instructor" && u.role !== "admin")) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid responsible user" },
+          { status: 400 },
+        );
+      }
+      update.responsibleId = u.id;
+    }
+  }
+
+  if (body.courseAdminId === null) {
+    update.courseAdminId = null;
+  }
+  if (typeof body.courseAdminId === "string") {
+    const courseAdminId = body.courseAdminId.trim().slice(0, 80);
+    if (!courseAdminId) {
+      update.courseAdminId = null;
+    } else {
+      const u = await prisma.user.findUnique({
+        where: { id: courseAdminId },
+        select: { id: true, role: true },
+      });
+      if (!u || (u.role !== "instructor" && u.role !== "admin")) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid course admin user" },
+          { status: 400 },
+        );
+      }
+      update.courseAdminId = u.id;
+    }
+  }
 
   if (typeof body.published === "boolean") update.published = body.published;
 

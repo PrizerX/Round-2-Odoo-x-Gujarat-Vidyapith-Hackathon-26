@@ -10,6 +10,7 @@ function isInstructorOrAdmin(role: string | undefined) {
 type CreateLessonBody = {
   title?: string;
   type?: "video" | "doc" | "image" | "quiz";
+  unitId?: string | null;
   description?: string;
   videoUrl?: string;
   durationMinutes?: number;
@@ -39,6 +40,13 @@ export async function POST(
 
   const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
   const type = safeLessonType(body.type);
+  const unitIdRaw =
+    body.unitId === null
+      ? null
+      : typeof body.unitId === "string"
+        ? body.unitId.trim().slice(0, 200)
+        : undefined;
+  const unitId = unitIdRaw === "" ? null : unitIdRaw;
   const description = typeof body.description === "string" ? body.description.trim().slice(0, 2000) : "";
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim().slice(0, 500) : "";
   const durationMinutesRaw = typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
@@ -55,6 +63,11 @@ export async function POST(
     const result = await prisma.$transaction(async (tx) => {
       const course = await tx.course.findUnique({ where: { id: courseId }, select: { id: true, lessonCount: true, durationMinutes: true } });
       if (!course) throw new Error("not_found");
+
+      if (typeof unitId === "string") {
+        const unit = await tx.courseUnit.findUnique({ where: { id: unitId }, select: { id: true, courseId: true } });
+        if (!unit || unit.courseId !== courseId) throw new Error("unit_not_found");
+      }
 
       const existing = await tx.lesson.findMany({
         where: { courseId },
@@ -82,6 +95,7 @@ export async function POST(
         data: {
           id: lessonId,
           courseId,
+          unitId: typeof unitId === "string" ? unitId : null,
           title,
           type,
           sortOrder,
@@ -150,6 +164,9 @@ export async function POST(
     const msg = e instanceof Error ? e.message : "error";
     if (msg === "not_found") {
       return NextResponse.json({ ok: false, error: "Course not found" }, { status: 404 });
+    }
+    if (msg === "unit_not_found") {
+      return NextResponse.json({ ok: false, error: "Unit not found" }, { status: 404 });
     }
     return NextResponse.json({ ok: false, error: "Failed to create lesson" }, { status: 500 });
   }

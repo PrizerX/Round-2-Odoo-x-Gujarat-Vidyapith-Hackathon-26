@@ -33,6 +33,10 @@
 - Demo utility: “Reset progress” button on course details clears completion + points for a course (DB + cookie/localStorage) and redirects back to details.
 - Visual polish: green progress indicators everywhere; paid price emphasized; “Enrolled” ribbon shown on catalog cards.
 - Course images now support 3 distinct URLs: cover (landscape), banner (wide header), thumbnail (square). Upload UI is deferred to Module A.
+- Module A navbar updated to match mock layout (top tabs: Courses / Reporting / Setting).
+- Module A course form page layout updated to match mock layout (publish/share widget, right-side image card placeholder, 4-tab section, content table layout).
+- Module A Units/Sections added inside courses (group lessons by unit; CRUD in backoffice; learner grouping).
+- Module A Quiz tab implemented (quiz list + Add Quiz modal + quiz builder: questions/choices + correct answer + rewards by attempt).
 
 ---
 
@@ -79,14 +83,16 @@ Goal: persist users (and later learning data) using a local database while **kee
 ### A2) Course Form (Edit Course)
 - [x] Edit route skeleton exists: `/backoffice/courses/[courseId]`
 - [x] Header actions: Publish toggle, Preview (learner view)
-- [ ] Header actions: Add Attendees (invite), Contact Attendees, Upload images (cover/banner/thumbnail)
+- [ ] Header actions: Add Attendees (invite), Contact Attendees
+- [x] Header actions: Edit/clear images (thumbnail/cover/banner URLs)
 - [x] Fields: Title (required), Tags, Website, Visibility, Access rules (+ price)
-- [ ] Fields: Responsible/Course Admin
-- [ ] Tabs: Content / Description / Options / Quiz (4-tab layout)
+- [x] Fields: Responsible (assign instructor/admin)
+- [x] Fields: Course Admin selector
+- [x] Tabs: Content / Description / Options / Quiz (4-tab layout)
 
 ### A3) Lessons / Content Management
 - [x] Lesson list (title + type)
-- [ ] 3-dot menu actions: Edit, Delete (with confirmation)
+- [x] 3-dot menu actions: Edit, Delete (with confirmation)
 - [x] Add Content button opens Lesson Editor popup (basic add modal)
 
 ### A4) Lesson Editor (Add/Edit)
@@ -99,19 +105,20 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [ ] Additional attachments: upload OR external link
 
 ### A5) Course Options (Access Rules)
-- [ ] Visibility: Everyone / Signed In
-- [ ] Access rules: Open / On Invitation / On Payment (+ price)
-- [ ] Course admin selector
+- [x] Visibility: Everyone / Signed In
+- [x] Access rules: Open / On Invitation / On Payment (+ price)
+- [x] Course admin selector
 
 ### A6) Quizzes (Instructor Side)
-- [ ] Quizzes list per course
-- [ ] Add Quiz (modal)
-- [ ] Edit/Delete quiz (delete with confirmation)
+- [x] Quizzes list per course
+- [x] Add Quiz (modal)
+- [x] Edit/Delete quiz (delete with confirmation)
 
 ### A7) Quiz Builder
-- [ ] Left panel: question list + Add Question + Rewards
-- [ ] Question editor: question text + multiple options + mark correct answer(s)
-- [ ] Rewards system: 1st attempt → X, 2nd → Y, 3rd → Z, 4th+ → W
+- [x] Left panel: question list + Add Question + Rewards
+- [x] Question editor: question text + multiple options + mark correct answer(s)
+- [x] Rewards system: 1st attempt → X, 2nd → Y, 3rd → Z, 4th+ → W
+    - Note: current UI enforces a single correct option (checkbox behaves like a radio by auto-unchecking others).
 
 ### A8) Reporting Dashboard
 - [x] Reporting route skeleton exists: `/backoffice/reports` (placeholder cards/table)
@@ -184,10 +191,10 @@ Goal: persist users (and later learning data) using a local database while **kee
 
 ## Phase 2: Instructor Backoffice (Hours 3-8)
 - [x] **Courses Dashboard:** Kanban/List toggle + search + card actions.
-- [ ] **Course Form:** Header actions + fields + 4 tabs.
-- [ ] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
+- [ ] **Course Form:** Header actions + fields + 4 tabs. (Attendees actions still pending)
+- [x] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
 - [ ] **Lesson Editor:** video/doc/image + description + attachments.
-- [ ] **Quiz Builder:** question editor + rewards system.
+- [x] **Quiz Builder:** question editor + rewards system.
 
 ## Phase 3: Learner Experience & Player (Hours 8-14)
 - [x] **My Courses Page:** Cards showing progress, tags, and dynamic buttons (Join/Start/Continue).
@@ -198,7 +205,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 
 ## Phase 4: Business Logic & Gamification (Hours 14-18)
 - [ ] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
-    - Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice quiz rewards config + full aggregation/reporting still pending.
+    - Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice can now configure rewards per attempt; full aggregation/reporting still pending.
 - [x] **Access Guard:** Redirect users based on Visibility (Everyone/Signed In) and Access (Open/Invitation/Payment).
 - [ ] **Reporting:** Instructor table showing time spent and completion %.
 
