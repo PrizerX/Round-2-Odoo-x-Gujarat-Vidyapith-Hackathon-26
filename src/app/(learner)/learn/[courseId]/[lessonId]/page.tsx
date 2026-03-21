@@ -1,16 +1,15 @@
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
 import {
   canSeeCourse,
-  getProgress,
   hasPurchased,
   isEnrolled,
 } from "@/lib/domain/course-logic";
 import {
   MOCK_COURSES,
   MOCK_ENROLLMENTS,
-  MOCK_PROGRESS,
   MOCK_PURCHASES,
 } from "@/lib/data/mock-learning";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
@@ -191,15 +190,52 @@ export default async function LearnerPlayerPage({
   const enrolled = isEnrolled(courseId, session, MOCK_ENROLLMENTS);
   const purchased = hasPurchased(courseId, session, MOCK_PURCHASES);
 
-  if (course.accessRule === "invitation" && !enrolled) {
+  // L3: join is explicit for open courses; enforce server-side.
+  let enrolledDb = false;
+  let purchasedDb = false;
+  try {
+    enrolledDb = !!(await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId: session.user.id, courseId } },
+      select: { id: true },
+    }));
+
+    purchasedDb = !!(await prisma.purchase.findUnique({
+      where: { userId_courseId: { userId: session.user.id, courseId } },
+      select: { id: true },
+    }));
+  } catch {
+    // ignore
+  }
+
+  const hasAccessViaDb = enrolledDb || purchasedDb;
+
+  if (course.accessRule === "invitation" && !(enrolledDb || enrolled)) {
     redirect(`/courses/${courseId}`);
   }
-  if (course.accessRule === "payment" && !purchased) {
+  if (course.accessRule === "payment" && !(purchasedDb || purchased)) {
     redirect(`/courses/${courseId}`);
   }
 
-  const progress = getProgress(courseId, session, MOCK_PROGRESS);
-  const completedCourses = await getCompletedCourseIds();
+  if (course.accessRule === "open" && !(hasAccessViaDb || enrolled || purchased)) {
+    redirect(`/courses/${courseId}`);
+  }
+
+  let progress: { completionPercent: number; lastLessonId?: string } | null = null;
+  try {
+    const row = await prisma.courseProgress.findUnique({
+      where: { userId_courseId: { userId: session.user.id, courseId } },
+      select: { completionPercent: true, lastLessonId: true },
+    });
+    if (row) {
+      progress = {
+        completionPercent: typeof (row as any).completionPercent === "number" ? (row as any).completionPercent : 0,
+        lastLessonId: typeof (row as any).lastLessonId === "string" ? (row as any).lastLessonId : undefined,
+      };
+    }
+  } catch {
+    progress = null;
+  }
+  const completedCourses = await getCompletedCourseIds(session.user.id);
   const completionPercent = completedCourses.has(courseId)
     ? 100
     : (progress?.completionPercent ?? 0);
@@ -213,6 +249,53 @@ export default async function LearnerPlayerPage({
 
   const lessonNumber = parseLessonNumber(lessonId);
   const boundedLessonId = `lesson_${Math.min(Math.max(1, lessonNumber), lessons.length)}`;
+
+  // L3: best-effort DB sync for progress once the learner has joined.
+  try {
+    const dbCourse = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true },
+    });
+
+    if (dbCourse) {
+      const shouldSync = course.accessRule === "open" ? (hasAccessViaDb || enrolled) : true;
+      if (!shouldSync) throw new Error("not_joined");
+
+      // Compute progress from completed lessons (lesson_1 => 0%). Caps at 99; 100 is set on completion.
+      const completedLessons = Math.max(0, Math.min(lessons.length, Math.max(0, lessonNumber - 1)));
+      const rawPercent = lessons.length > 0 ? Math.floor((completedLessons / lessons.length) * 100) : 0;
+      const computedPercent = Math.max(0, Math.min(99, rawPercent));
+
+      const existing = await prisma.courseProgress.findUnique({
+        where: { userId_courseId: { userId: session.user.id, courseId } },
+        select: { completionPercent: true, startedAt: true },
+      });
+
+      const currentPercent = typeof (existing as any)?.completionPercent === "number"
+        ? (existing as any).completionPercent
+        : 0;
+
+      const nextPercent = currentPercent >= 100 ? 100 : Math.max(currentPercent, computedPercent);
+
+      await prisma.courseProgress.upsert({
+        where: { userId_courseId: { userId: session.user.id, courseId } },
+        update: {
+          lastLessonId: boundedLessonId,
+          completionPercent: nextPercent,
+          startedAt: (existing as any)?.startedAt ?? new Date(),
+        },
+        create: {
+          userId: session.user.id,
+          courseId,
+          completionPercent: nextPercent,
+          lastLessonId: boundedLessonId,
+          startedAt: new Date(),
+        },
+      });
+    }
+  } catch {
+    // best-effort; mock + cookie fallback still works
+  }
 
   if (boundedLessonId !== lessonId) {
     redirect(`/learn/${courseId}/${boundedLessonId}`);

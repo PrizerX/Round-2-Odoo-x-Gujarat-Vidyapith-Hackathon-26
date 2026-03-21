@@ -1,60 +1,54 @@
-import Link from "next/link";
+import { prisma } from "@/lib/db/prisma";
 
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { BackofficeCoursesClient, type BackofficeCourseListItem } from "./courses-client";
 
-export default function BackofficeCoursesPage() {
-  return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Courses</h1>
-          <p className="text-sm text-muted">
-            Dashboard placeholder — Kanban/List toggle + search comes next.
-          </p>
-        </div>
-        <Button variant="primary">Add Course</Button>
-      </div>
+function splitTags(tagsText: string | null): string[] {
+  if (!tagsText) return [];
+  return tagsText
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Sample Course</CardTitle>
-            <CardDescription>Published • 4 lessons • 1h 20m</CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div className="text-sm text-muted">Tags: Basics, UI</div>
-            <Link
-              href="/backoffice/courses/course_1"
-              className="text-sm font-medium text-primary"
-            >
-              Edit
-            </Link>
-          </CardContent>
-        </Card>
+export default async function BackofficeCoursesPage(props: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = props.searchParams ? await props.searchParams : {};
+  const qRaw = sp?.q;
+  const query = typeof qRaw === "string" ? qRaw.trim().slice(0, 80) : "";
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Draft Course</CardTitle>
-            <CardDescription>Not published</CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div className="text-sm text-muted">Tags: Advanced</div>
-            <Link
-              href="/backoffice/courses/course_2"
-              className="text-sm font-medium text-primary"
-            >
-              Edit
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+  const rows = await prisma.course.findMany({
+    where: query ? { title: { contains: query } } : undefined,
+    orderBy: [{ updatedAt: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      published: true,
+      views: true,
+      lessonCount: true,
+      durationMinutes: true,
+      tagsText: true,
+      thumbnailUrl: true,
+      coverUrl: true,
+      bannerUrl: true,
+      updatedAt: true,
+    },
+  });
+
+  const courses: BackofficeCourseListItem[] = rows.map((c) => ({
+    id: c.id,
+    title: c.title,
+    published: c.published,
+    views: c.views,
+    lessonCount: c.lessonCount,
+    durationMinutes: c.durationMinutes,
+    tags: splitTags(c.tagsText),
+    thumbnailUrl: c.thumbnailUrl ?? null,
+    coverUrl: c.coverUrl ?? null,
+    bannerUrl: c.bannerUrl ?? null,
+    updatedAt: typeof (c as any).updatedAt === "string" ? (c as any).updatedAt : (c.updatedAt?.toISOString?.() ?? null),
+  }));
+
+  return <BackofficeCoursesClient courses={courses} initialQuery={query} />;
 }

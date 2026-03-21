@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { getSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
 import { COMPLETED_COURSES_COOKIE } from "@/lib/learning/completed-courses";
 import { COURSE_POINTS_COOKIE } from "@/lib/learning/points";
 
@@ -54,6 +56,19 @@ export async function POST(req: Request) {
       sameSite: "lax",
       path: "/",
     });
+  }
+
+  // L3: also clear DB-backed learning state for signed-in users.
+  try {
+    const session = await getSession();
+    if (session) {
+      const userId = session.user.id;
+      await prisma.quizAttempt.deleteMany({ where: { userId, courseId } });
+      await prisma.lessonProgress.deleteMany({ where: { userId, lesson: { courseId } } });
+      await prisma.courseProgress.deleteMany({ where: { userId, courseId } });
+    }
+  } catch {
+    // best-effort
   }
 
   return NextResponse.json({ ok: true });

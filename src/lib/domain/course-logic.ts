@@ -79,6 +79,12 @@ export function getCourseCta(args: {
     return { label: "Invitation Only", href: `/courses/${course.id}`, disabled: true };
   }
 
+  // UX tweak: for open courses, require an explicit Join step before learning.
+  if (course.accessRule === "open" && !enrolled && !purchased) {
+    const next = encodeURIComponent(`/courses/${course.id}`);
+    return { label: "Join", href: `/api/courses/join?courseId=${course.id}&next=${next}` };
+  }
+
   const completion = progress?.completionPercent ?? 0;
   const lastLessonId = progress?.lastLessonId ?? "lesson_1";
 

@@ -5,22 +5,18 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth/session";
 import { BADGE_LEVELS, getBadgeForPoints, getNextBadge } from "@/lib/domain/gamification";
-import { MOCK_PROGRESS } from "@/lib/data/mock-learning";
-import { getTotalEarnedPoints } from "@/lib/learning/points";
+import { getMockBasePoints } from "@/lib/data/mock-learning";
+import { getTotalEarnedPointsForUser } from "@/lib/learning/points";
 
 function getTotalPoints(userId: string): number {
-  const total = MOCK_PROGRESS.filter((p) => p.userId === userId).reduce(
-    (sum, p) => sum + (p.completionPercent ?? 0),
-    0,
-  );
-  return Math.max(0, Math.round(total));
+  return getMockBasePoints(userId);
 }
 
 export default async function ProfilePage() {
   const session = await getSession();
   if (!session) redirect("/auth/sign-in?next=/profile");
 
-  const earned = await getTotalEarnedPoints();
+  const earned = await getTotalEarnedPointsForUser(session.user.id);
   const points = getTotalPoints(session.user.id) + earned;
   const badge = getBadgeForPoints(points);
   const next = getNextBadge(points);

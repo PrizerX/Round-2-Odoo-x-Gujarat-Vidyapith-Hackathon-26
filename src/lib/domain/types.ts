@@ -5,8 +5,10 @@ export type Course = {
   id: string;
   title: string;
   description?: string;
-  // Wide banner image used on the course details header.
+  // Landscape cover image used on course cards (My Courses, etc.).
   coverImageUrl?: string;
+  // Extra-wide banner image used on the course details header.
+  bannerImageUrl?: string;
   // Square/portrait image used as the course thumbnail.
   thumbnailImageUrl?: string;
   tags: string[];

@@ -4,7 +4,10 @@
 
 - Strict UI tokens applied (Primary `#714b67`, Accent `#f3f4f6`, Base `#ffffff`).
 - All Add/Edit actions must use modals; all Delete actions must have confirmation.
-- Local Auth + Local DB required (no Supabase); currently using mock auth + mock data.
+- Local Auth + Local DB required (no Supabase); users are persisted in local SQLite (Prisma).
+    - Course catalog/content is still mock-driven (until Module A CRUD is wired).
+    - Learning state is DB-first when signed-in (attempts/reviews/progress/points), with cookie/localStorage fallback kept for MVP robustness.
+- This TaskList mirrors the provided Learnova Architecture sections (Module A + Module B).
 - Publishing: only published courses are visible to learners.
 - Guests can browse (if allowed) but must sign in to start learning.
 
@@ -12,20 +15,23 @@
 - Next.js App Router + TypeScript + Tailwind scaffolded in repo root.
 - Basic UI kit primitives created: Button/Card/Input/Modal/ConfirmDialog.
 - Route groups created for `(learner)` and `(backoffice)`.
-- Auth pages split into `/auth/sign-in` and `/auth/sign-up` (mock cookie session).
+- Auth pages split into `/auth/sign-in` and `/auth/sign-up` (DB-backed auth; session stored in `learnova_session` cookie).
 - Role-based protection added for `/backoffice/*` (instructor/admin only).
 - Learner navbar shows Courses + auth status (Sign in / user + Logout).
 - Learner discovery `/courses` implemented with dynamic CTA (Join/Start/Continue/Buy).
+- Join-first UX: open courses require explicit Join before learning; player route is gated to prevent bypass.
 - Learner `/my-courses` implemented with progress cards + total points + badge (trimmed to 4 demo items).
 - Learner `/profile` implemented with badge ladder (Newbie → Master).
-- Learner course details `/courses/[courseId]` redesigned to match raw mockup (cover + thumbnail placeholders, progress/stats card, tabs, searchable content list).
+- Learner course details `/courses/[courseId]` redesigned to match raw mockup (banner + cover + square thumbnail placeholders, progress/stats card, tabs, searchable content list).
 - Learner player `/learn/[courseId]/[lessonId]` redesigned to match raw mockup (left course panel + right viewer pane).
 - YouTube video embeds wired for video lessons (placeholder URLs supported).
 - Proper quiz flow implemented (start → questions → results modal) with simple scoring.
 - Quiz completion marks course as 100% complete across learner pages (demo persistence via httpOnly cookie + API route).
 - Quiz points now sync into `/my-courses` + `/profile` totals (demo persistence via httpOnly cookie).
-- Demo utility: “Reset progress” button on course details clears completion + points for a course.
+- Points now start at 0 (no mock base points).
+- Demo utility: “Reset progress” button on course details clears completion + points for a course (DB + cookie/localStorage) and redirects back to details.
 - Visual polish: green progress indicators everywhere; paid price emphasized; “Enrolled” ribbon shown on catalog cards.
+- Course images now support 3 distinct URLs: cover (landscape), banner (wide header), thumbnail (square). Upload UI is deferred to Module A.
 
 ---
 
@@ -34,24 +40,25 @@
 Goal: persist users (and later learning data) using a local database while **keeping the existing** `/api/auth/*` endpoints and the `learnova_session` cookie shape so current flows don’t break.
 
 ### L1) Database & ORM setup
-- [ ] Pick DB engine for hackathon runtime:
-    - SQLite via Prisma (fastest local setup)
-    - OR Postgres local/Docker (best parity)
-- [ ] Add Prisma to the project (`prisma/`, `schema.prisma`, migrations)
-- [ ] Create seed script to insert demo users (learner/instructor/admin)
-- [ ] Add `.env` with `DATABASE_URL` (+ app secret if signing sessions)
+- [x] Pick DB engine for hackathon runtime:
+    - [x] SQLite via Prisma (fastest local setup)
+    - [ ] OR Postgres local/Docker (best parity)
+- [x] Add Prisma to the project (`prisma/`, `schema.prisma`, migrations)
+- [x] Create seed script to insert demo users (learner/instructor/admin)
+- [x] Create core platform DB schemas (Course/Lesson/Quiz/Progress/Review/etc.) + seed a few demo rows (UI wiring pending)
+- [x] Add `.env` with `DATABASE_URL` (+ app secret if signing sessions)
 
 ### L2) Auth persistence (compatible migration)
-- [ ] Update `/api/auth/signup` to create a DB user (unique email) + hash password
-- [ ] Update `/api/auth/login` to verify password hash against DB
-- [ ] Keep `/api/auth/me` + `/api/auth/logout` behavior unchanged
+- [x] Update `/api/auth/signup` to create a DB user (unique email) + hash password
+- [x] Update `/api/auth/login` to verify password hash against DB
+- [x] Keep `/api/auth/me` + `/api/auth/logout` behavior unchanged
 - [ ] (Optional but recommended) Sign the session cookie to prevent tampering (keep same session payload contract)
 
 ### L3) Learning persistence (incremental, after L1–L2)
-- [ ] Move reviews persistence from localStorage → DB (per-course, per-user)
-- [ ] Move quiz attempts from localStorage → DB (per-course, per-quiz, per-user)
-- [ ] Move completion + points from cookies → DB (store by userId + courseId)
-- [ ] Keep cookie-based behavior as a temporary fallback during migration
+- [x] Move reviews persistence from localStorage → DB (per-course, per-user) via `/api/reviews` (localStorage kept as fallback/cache)
+- [x] Move quiz attempts from localStorage → DB (per-course, per-quiz, per-user) via `/api/learning/attempt` (localStorage fallback)
+- [x] Move completion + points from cookies → DB (store by userId + courseId)
+- [x] Keep cookie-based behavior as a temporary fallback during migration
 
 
 ## Module A — Instructor/Admin Backoffice (Architecture Checklist)
@@ -59,15 +66,17 @@ Goal: persist users (and later learning data) using a local database while **kee
 ### A1) Courses Dashboard (Kanban/List)
 - [x] Backoffice route skeleton exists: `/backoffice`, `/backoffice/courses`
 - [ ] Kanban view
-- [ ] List view
-- [ ] Search courses by name
-- [ ] Course card info: title, tags, views, total lessons, total duration, published badge
-- [ ] Actions: Edit, Share (generate/copy link)
-- [ ] Create course: `+` button → popup modal → enter course name
+- [x] List view (DB-backed)
+- [x] Search courses by name
+- [x] Course card info: title, tags, views, total lessons, total duration, published badge
+- [x] Action: Edit
+- [x] Action: Preview (learner view)
+- [ ] Action: Share (generate/copy link)
+- [x] Create course: `+` button → popup modal → enter course name
 
 ### A2) Course Form (Edit Course)
 - [x] Edit route skeleton exists: `/backoffice/courses/[courseId]`
-- [ ] Header actions: Publish toggle, Preview (learner view), Add Attendees (invite), Contact Attendees, Upload image
+- [ ] Header actions: Publish toggle, Preview (learner view), Add Attendees (invite), Contact Attendees, Upload images (cover/banner/thumbnail)
 - [ ] Fields: Title (required), Tags, Website (required when published), Responsible/Course Admin
 - [ ] Tabs: Content / Description / Options / Quiz (4-tab layout)
 
@@ -122,7 +131,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Profile panel (total points + badge level)
 
 ### B3) Course Detail Page
-- [x] Overview tab (title, image placeholders, description)
+- [x] Overview tab (title, image placeholders: banner + square thumbnail, description)
 - [x] Progress + total lessons + completed/incomplete counts
 - [x] Lessons/content list with completion status + search
 - [x] Lesson click opens player
@@ -130,7 +139,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 ### B4) Ratings & Reviews
 - [x] Average rating + reviews list
 - [x] Add/Edit review (logged-in users) via modal
-    - MVP persistence: stored per-course in localStorage.
+    - L3 persistence: stored per-course in SQLite (Prisma) with localStorage fallback.
 
 ### B5) Full-Screen Lesson Player
 - [x] Sidebar: course title + progress % + lesson list + toggle sidebar
@@ -146,11 +155,12 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] One-question-per-page flow + Proceed
 - [x] Completion modal shows points earned
 - [x] Attempt-based scoring reduction (1st attempt → X, 2nd → Y, etc.)
-- [x] Persist attempts per quiz/course (localStorage)
+- [x] Persist attempts per quiz/course (DB via Prisma; localStorage fallback)
 
 ### B7) Points & Completion
 - [x] Badges based on total points (dashboard + profile view)
 - [x] Course completion reflected (quiz completion marks course 100% for demo)
+- [x] Points + completion prefer DB when signed-in (cookie fallback kept for MVP)
 - [ ] “Complete course” button/action (explicit completion outside quiz)
 - [ ] Points popup with progress to next rank (points are synced; popup lacks next-rank computation/UI)
 

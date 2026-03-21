@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g)"/>
+  <rect x="48" y="48" width="1104" height="534" rx="28" fill="rgba(255,255,255,0.14)"/>
+  <text x="90" y="190" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="56" font-weight="800" fill="#ffffff">Course Cover</text>
+  <text x="90" y="255" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="28" font-weight="600" fill="rgba(255,255,255,0.9)">Landscape (card) • 1200×630</text>
+  <text x="90" y="330" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="22" fill="rgba(255,255,255,0.85)">Replace with your own image under /public/images/covers</text>
+</svg>

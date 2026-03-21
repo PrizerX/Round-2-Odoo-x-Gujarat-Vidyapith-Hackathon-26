@@ -3,17 +3,18 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import {
   getCourseCta,
-  getProgress,
   hasPurchased,
   isEnrolled,
 } from "@/lib/domain/course-logic";
 import {
   MOCK_COURSES,
   MOCK_ENROLLMENTS,
-  MOCK_PROGRESS,
   MOCK_PURCHASES,
 } from "@/lib/data/mock-learning";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
+import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
+import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
+import { getDbProgressForCourse } from "@/lib/learning/progress";
 
 import { CourseDetailsClient, type CourseDetailsContentItem } from "./course-details-client";
 
@@ -71,12 +72,33 @@ export default async function LearnerCourseDetailsPage({
     );
   }
 
-  const enrolled = isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-  const progress = getProgress(course.id, session, MOCK_PROGRESS);
-  const purchased = hasPurchased(course.id, session, MOCK_PURCHASES);
-  const cta = getCourseCta({ course, session, enrolled, progress, purchased });
+  const enrolledMock = isEnrolled(course.id, session, MOCK_ENROLLMENTS);
+  const purchasedMock = hasPurchased(course.id, session, MOCK_PURCHASES);
 
-  const completedCourses = await getCompletedCourseIds();
+  const [enrolledIds, purchasedIds, dbProgress] = session
+    ? await Promise.all([
+        getEnrolledCourseIdsForUser(session.user.id),
+        getPurchasedCourseIdsForUser(session.user.id),
+        getDbProgressForCourse(session.user.id, course.id),
+      ])
+    : [new Set<string>(), new Set<string>(), null];
+
+  const enrolledDb = session ? enrolledIds.has(course.id) : false;
+  const purchasedDb = session ? purchasedIds.has(course.id) : false;
+
+  const enrolledEffective = enrolledDb || enrolledMock;
+  const purchasedEffective = purchasedDb || purchasedMock;
+  const progress = (dbProgress as any) ?? null;
+
+  const cta = getCourseCta({
+    course,
+    session,
+    enrolled: enrolledEffective,
+    progress,
+    purchased: purchasedEffective,
+  });
+
+  const completedCourses = await getCompletedCourseIds(session?.user.id);
   const completionPercent = completedCourses.has(course.id)
     ? 100
     : (progress?.completionPercent ?? 0);
@@ -99,6 +121,7 @@ export default async function LearnerCourseDetailsPage({
       description={course.description}
       tags={course.tags}
       coverImageUrl={course.coverImageUrl}
+      bannerImageUrl={course.bannerImageUrl}
       thumbnailImageUrl={course.thumbnailImageUrl}
       lessonCount={counts.lessonCount}
       completionPercent={counts.completionPercent}

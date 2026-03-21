@@ -13,7 +13,6 @@ import { getSession } from "@/lib/auth/session";
 import {
   formatDuration,
   getCourseCta,
-  getProgress,
   hasPurchased,
   isEnrolled,
   canSeeCourse,
@@ -21,14 +20,25 @@ import {
 import {
   MOCK_COURSES,
   MOCK_ENROLLMENTS,
-  MOCK_PROGRESS,
   MOCK_PURCHASES,
 } from "@/lib/data/mock-learning";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
+import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
+import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
+import { getDbProgressMapForUser } from "@/lib/learning/progress";
 
 export default async function LearnerCoursesPage() {
   const session = await getSession();
-  const completedCourses = await getCompletedCourseIds();
+  const completedCourses = await getCompletedCourseIds(session?.user.id);
+
+  const userId = session?.user.id ?? null;
+  const [enrolledIds, purchasedIds, dbProgress] = userId
+    ? await Promise.all([
+        getEnrolledCourseIdsForUser(userId),
+        getPurchasedCourseIdsForUser(userId),
+        getDbProgressMapForUser(userId),
+      ])
+    : [new Set<string>(), new Set<string>(), {} as Record<string, any>];
 
   const courses = MOCK_COURSES.filter((c) => canSeeCourse(c, session));
 
@@ -43,9 +53,17 @@ export default async function LearnerCoursesPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {courses.map((course) => {
-          const enrolled = isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-          const progress = getProgress(course.id, session, MOCK_PROGRESS);
-          const purchased = hasPurchased(course.id, session, MOCK_PURCHASES);
+          const enrolled = session
+            ? enrolledIds.has(course.id) || isEnrolled(course.id, session, MOCK_ENROLLMENTS)
+            : false;
+
+          const purchased = session
+            ? purchasedIds.has(course.id) || hasPurchased(course.id, session, MOCK_PURCHASES)
+            : false;
+
+          const progress = session
+            ? ((dbProgress[course.id] as any) ?? null)
+            : null;
           const cta = getCourseCta({
             course,
             session,

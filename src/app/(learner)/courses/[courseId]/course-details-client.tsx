@@ -205,6 +205,7 @@ export function CourseDetailsClient(props: {
   description?: string;
   tags: string[];
   coverImageUrl?: string;
+  bannerImageUrl?: string;
   thumbnailImageUrl?: string;
   lessonCount: number;
   completionPercent: number;
@@ -228,17 +229,70 @@ export function CourseDetailsClient(props: {
   const [draftText, setDraftText] = React.useState("");
 
   React.useEffect(() => {
-    const stored = readStoredReviews(props.courseId);
-    if (stored.length) {
-      // Merge stored on top of seed by userId (1 review per user).
-      const byUser = new Map<string, CourseReview>();
-      for (const r of seedReviews(props.courseId)) byUser.set(r.userId, r);
-      for (const r of stored) byUser.set(r.userId, r);
-      const merged = Array.from(byUser.values()).sort((a, b) => b.createdAt - a.createdAt);
-      setReviews(merged);
-    } else {
-      setReviews(seedReviews(props.courseId));
-    }
+    let active = true;
+
+    // L3 primary: DB-backed reviews (public read).
+    fetch(`/api/reviews?courseId=${encodeURIComponent(props.courseId)}`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as unknown;
+        if (typeof data !== "object" || !data) return null;
+        const reviews = (data as { reviews?: unknown }).reviews;
+        if (!Array.isArray(reviews)) return null;
+        return reviews
+          .filter((r) => typeof r === "object" && r)
+          .map((r) => r as Partial<CourseReview>)
+          .filter((r) => r.courseId === props.courseId)
+          .filter((r) => typeof r.userId === "string" && typeof r.userName === "string")
+          .filter((r) => typeof r.text === "string")
+          .map((r) => ({
+            id: typeof r.id === "string" ? r.id : `db_${props.courseId}_${r.userId}`,
+            courseId: props.courseId,
+            userId: r.userId as string,
+            userName: r.userName as string,
+            rating: clampRating(typeof r.rating === "number" ? r.rating : 5),
+            text: (r.text as string).slice(0, 1000),
+            createdAt: typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+          }))
+          .sort((a, b) => b.createdAt - a.createdAt);
+      })
+      .then((dbReviews) => {
+        if (!active) return;
+
+        if (dbReviews && dbReviews.length) {
+          setReviews(dbReviews);
+          return;
+        }
+
+        // Fallback: seed + localStorage (MVP).
+        const stored = readStoredReviews(props.courseId);
+        if (stored.length) {
+          const byUser = new Map<string, CourseReview>();
+          for (const r of seedReviews(props.courseId)) byUser.set(r.userId, r);
+          for (const r of stored) byUser.set(r.userId, r);
+          const merged = Array.from(byUser.values()).sort((a, b) => b.createdAt - a.createdAt);
+          setReviews(merged);
+        } else {
+          setReviews(seedReviews(props.courseId));
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        const stored = readStoredReviews(props.courseId);
+        if (stored.length) {
+          const byUser = new Map<string, CourseReview>();
+          for (const r of seedReviews(props.courseId)) byUser.set(r.userId, r);
+          for (const r of stored) byUser.set(r.userId, r);
+          const merged = Array.from(byUser.values()).sort((a, b) => b.createdAt - a.createdAt);
+          setReviews(merged);
+        } else {
+          setReviews(seedReviews(props.courseId));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.courseId]);
 
@@ -256,6 +310,8 @@ export function CourseDetailsClient(props: {
     return props.content.filter((c) => c.title.toLowerCase().includes(q));
   }, [query, props.content]);
 
+  const bannerSrc = props.bannerImageUrl ?? props.coverImageUrl;
+
   return (
     <div className="space-y-5">
       <div className="text-xs text-muted">
@@ -268,17 +324,17 @@ export function CourseDetailsClient(props: {
 
       <Card className="overflow-hidden">
         <div className="relative h-40 w-full border-b border-border bg-accent sm:h-44">
-          {props.coverImageUrl ? (
+          {bannerSrc ? (
             <Image
-              src={props.coverImageUrl}
-              alt={`${props.title} cover`}
+              src={bannerSrc}
+              alt={`${props.title} banner`}
               fill
               className="object-cover"
               priority
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-sm text-muted">
-              Cover Image
+              Banner Image
             </div>
           )}
         </div>
@@ -324,12 +380,14 @@ export function CourseDetailsClient(props: {
                       {props.cta.label === "Buy" ? "Buy Course" : props.cta.label}
                     </Button>
                   </Link>
-                  <Link
-                    href={`/learn/${props.courseId}/lesson_1`}
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    Open Player
-                  </Link>
+                  {props.cta.label !== "Join" && props.cta.label !== "Buy" && props.cta.label !== "Invitation Only" && (
+                    <Link
+                      href={`/learn/${props.courseId}/lesson_1`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Open Player
+                    </Link>
+                  )}
 
                   <div className="ml-auto flex flex-wrap items-center gap-2">
                     {props.accessBadges.map((b) => (
@@ -589,13 +647,13 @@ export function CourseDetailsClient(props: {
                         Cancel
                       </Button>
                       <Button
-                        onClick={() => {
+                        onClick={async () => {
                           const viewer = props.viewer;
                           if (!viewer) return;
                           const text = draftText.trim();
                           if (!text) return;
 
-                          const next: CourseReview = {
+                          const fallbackNext: CourseReview = {
                             id: viewerReview?.id ?? `r_${props.courseId}_${viewer.id}`,
                             courseId: props.courseId,
                             userId: viewer.id,
@@ -605,13 +663,60 @@ export function CourseDetailsClient(props: {
                             createdAt: Date.now(),
                           };
 
-                          setReviews((prev) => {
-                            const withoutViewer = prev.filter((r) => r.userId !== viewer.id);
-                            const merged = [next, ...withoutViewer];
-                            writeStoredReviews(props.courseId, merged);
-                            return merged;
-                          });
-                          setReviewModalOpen(false);
+                          try {
+                            const res = await fetch("/api/reviews", {
+                              method: "POST",
+                              headers: { "content-type": "application/json" },
+                              body: JSON.stringify({
+                                courseId: props.courseId,
+                                rating: clampRating(draftRating),
+                                text: text.slice(0, 1000),
+                              }),
+                            });
+
+                            if (res.ok) {
+                              const data = (await res.json()) as unknown;
+                              const review =
+                                typeof data === "object" && data
+                                  ? (data as { review?: unknown }).review
+                                  : null;
+
+                              if (review && typeof review === "object") {
+                                const r = review as Partial<CourseReview>;
+                                const next: CourseReview = {
+                                  id: typeof r.id === "string" ? r.id : fallbackNext.id,
+                                  courseId: props.courseId,
+                                  userId: viewer.id,
+                                  userName: viewer.name,
+                                  rating: clampRating(typeof r.rating === "number" ? r.rating : fallbackNext.rating),
+                                  text: typeof r.text === "string" ? r.text : fallbackNext.text,
+                                  createdAt: typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+                                };
+
+                                setReviews((prev) => {
+                                  const withoutViewer = prev.filter((x) => x.userId !== viewer.id);
+                                  const merged = [next, ...withoutViewer].sort(
+                                    (a, b) => b.createdAt - a.createdAt,
+                                  );
+                                  // Keep local copy as offline fallback.
+                                  writeStoredReviews(props.courseId, merged);
+                                  return merged;
+                                });
+                                setReviewModalOpen(false);
+                                return;
+                              }
+                            }
+
+                            throw new Error("db_save_failed");
+                          } catch {
+                            setReviews((prev) => {
+                              const withoutViewer = prev.filter((r) => r.userId !== viewer.id);
+                              const merged = [fallbackNext, ...withoutViewer];
+                              writeStoredReviews(props.courseId, merged);
+                              return merged;
+                            });
+                            setReviewModalOpen(false);
+                          }
                         }}
                         disabled={!draftText.trim()}
                       >
@@ -680,6 +785,8 @@ export function CourseDetailsClient(props: {
               }
             }
 
+            setResetOpen(false);
+            router.replace(`/courses/${props.courseId}`);
             router.refresh();
           } finally {
             setResetBusy(false);

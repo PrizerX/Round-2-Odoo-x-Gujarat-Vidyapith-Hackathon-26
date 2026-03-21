@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
+import bcrypt from "bcryptjs";
+
 import { validatePassword } from "@/lib/auth/password-policy";
 import { serializeSession, SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import type { Session, UserRole } from "@/lib/auth/types";
+import { prisma } from "@/lib/db/prisma";
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as
@@ -47,14 +50,30 @@ export async function POST(req: Request) {
     );
   }
 
-  // Prototype behavior: we don't persist users yet (Supabase will handle that).
-  // We still create a session so flows can be tested end-to-end.
-  const session: Session = {
-    user: {
-      id: `u_${role}_${Date.now()}`,
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    return NextResponse.json(
+      { error: "An account with this email already exists." },
+      { status: 409 },
+    );
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: {
       email,
       name,
       role,
+      passwordHash,
+    },
+  });
+
+  const session: Session = {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
     },
   };
 

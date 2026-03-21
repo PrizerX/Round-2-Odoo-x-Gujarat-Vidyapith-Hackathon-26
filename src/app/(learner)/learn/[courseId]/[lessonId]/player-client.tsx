@@ -136,8 +136,17 @@ function PlayerContentViewer(props: { lesson: PlayerLesson | null | undefined })
 
 function QuizViewer(props: {
   quiz?: QuizDefinition;
+  courseId?: string;
   storageKey?: string;
-  onCompleted?: (points: number) => void;
+  onCompleted?: (result: {
+    courseId: string;
+    quizId: string;
+    points: number;
+    attemptId?: string;
+    attemptNumber: number;
+    correctCount: number;
+    totalQuestions: number;
+  }) => void;
 }) {
   const quiz = props.quiz;
 
@@ -147,6 +156,7 @@ function QuizViewer(props: {
   const [index, setIndex] = React.useState(0);
   const [answers, setAnswers] = React.useState<Record<string, number>>({});
   const [attempt, setAttempt] = React.useState(0);
+  const [attemptId, setAttemptId] = React.useState<string | undefined>(undefined);
   const [resultOpen, setResultOpen] = React.useState(false);
   const [earnedPoints, setEarnedPoints] = React.useState(0);
 
@@ -159,6 +169,7 @@ function QuizViewer(props: {
     setPhase("intro");
     setIndex(0);
     setAnswers({});
+    setAttemptId(undefined);
     // Persist attempts per quiz (MVP via localStorage).
     if (typeof window !== "undefined" && props.storageKey) {
       try {
@@ -171,8 +182,34 @@ function QuizViewer(props: {
     } else {
       setAttempt(0);
     }
+
+    // L3: prefer DB-backed attempt count for signed-in users (best-effort).
+    let active = true;
+    if (quiz?.id) {
+      fetch(`/api/learning/attempt?quizId=${encodeURIComponent(quiz.id)}`)
+        .then(async (res) => {
+          if (!res.ok) return null;
+          const data = (await res.json()) as unknown;
+          if (typeof data !== "object" || !data) return null;
+          const n = (data as { attemptNumber?: unknown }).attemptNumber;
+          if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return null;
+          return Math.floor(n);
+        })
+        .then((n) => {
+          if (!active) return;
+          if (typeof n === "number") setAttempt(n);
+        })
+        .catch(() => {
+          // ignore
+        });
+    }
+
     setResultOpen(false);
     setEarnedPoints(0);
+
+    return () => {
+      active = false;
+    };
   }, [quiz?.id, props.storageKey]);
 
   if (!quiz || total === 0) {
@@ -217,19 +254,67 @@ function QuizViewer(props: {
   };
 
   const onStart = () => {
-    setAttempt((a) => {
-      const next = a + 1;
-      if (typeof window !== "undefined" && props.storageKey) {
-        try {
-          window.localStorage.setItem(`learnova_quiz_attempt_${props.storageKey}`,
-            String(next),
-          );
-        } catch {
-          // ignore
+    // Try DB-backed attempt increment first.
+    const courseId = props.courseId;
+    if (courseId && quiz?.id) {
+      fetch("/api/learning/attempt", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ courseId, quizId: quiz.id }),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error("attempt_failed");
+          const data = (await res.json()) as unknown;
+          if (typeof data !== "object" || !data) throw new Error("bad_payload");
+          const attemptNumber = (data as { attemptNumber?: unknown }).attemptNumber;
+          const id = (data as { attemptId?: unknown }).attemptId;
+          if (typeof attemptNumber === "number" && Number.isFinite(attemptNumber)) {
+            setAttempt(Math.max(0, Math.floor(attemptNumber)));
+            if (typeof window !== "undefined" && props.storageKey) {
+              try {
+                window.localStorage.setItem(
+                  `learnova_quiz_attempt_${props.storageKey}`,
+                  String(Math.max(0, Math.floor(attemptNumber))),
+                );
+              } catch {
+                // ignore
+              }
+            }
+          }
+          if (typeof id === "string") setAttemptId(id);
+        })
+        .catch(() => {
+          // Fallback: localStorage-only (MVP)
+          setAttempt((a) => {
+            const next = a + 1;
+            if (typeof window !== "undefined" && props.storageKey) {
+              try {
+                window.localStorage.setItem(
+                  `learnova_quiz_attempt_${props.storageKey}`,
+                  String(next),
+                );
+              } catch {
+                // ignore
+              }
+            }
+            return next;
+          });
+        });
+    } else {
+      setAttempt((a) => {
+        const next = a + 1;
+        if (typeof window !== "undefined" && props.storageKey) {
+          try {
+            window.localStorage.setItem(`learnova_quiz_attempt_${props.storageKey}`,
+              String(next),
+            );
+          } catch {
+            // ignore
+          }
         }
-      }
-      return next;
-    });
+        return next;
+      });
+    }
     setPhase("in_progress");
   };
 
@@ -240,11 +325,20 @@ function QuizViewer(props: {
       return;
     }
 
-    const { points } = scoreQuiz(Math.max(1, attempt));
+    const attemptNumber = Math.max(1, attempt);
+    const { correct, points } = scoreQuiz(attemptNumber);
     setEarnedPoints(points);
     setPhase("done");
     setResultOpen(true);
-    props.onCompleted?.(points);
+    props.onCompleted?.({
+      courseId: props.courseId ?? "",
+      quizId: quiz.id,
+      points,
+      attemptId,
+      attemptNumber,
+      correctCount: correct,
+      totalQuestions: total,
+    });
   };
 
   const onRetry = () => {
@@ -510,13 +604,22 @@ export function LearnerPlayerClient(props: {
         {currentEffective?.type === "quiz" ? (
           <QuizViewer
             quiz={currentEffective.quiz}
+            courseId={courseId}
             storageKey={currentEffective.quiz ? `${courseId}:${currentEffective.quiz.id}` : undefined}
-            onCompleted={async (points) => {
+            onCompleted={async (result) => {
               try {
                 const res = await fetch("/api/learning/complete", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ courseId, points }),
+                  body: JSON.stringify({
+                    courseId,
+                    points: result.points,
+                    quizId: result.quizId,
+                    attemptId: result.attemptId,
+                    attemptNumber: result.attemptNumber,
+                    correctCount: result.correctCount,
+                    totalQuestions: result.totalQuestions,
+                  }),
                 });
                 if (res.ok) setCourseCompleted(true);
               } catch {

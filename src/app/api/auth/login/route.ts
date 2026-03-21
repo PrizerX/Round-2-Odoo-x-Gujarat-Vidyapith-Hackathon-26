@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { MOCK_USERS } from "@/lib/auth/mock-users";
+import bcrypt from "bcryptjs";
+
 import { serializeSession, SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import type { Session } from "@/lib/auth/types";
+import { prisma } from "@/lib/db/prisma";
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as
@@ -19,8 +21,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const user = MOCK_USERS.find((u) => u.email.toLowerCase() === email);
-  if (!user || user.password !== password) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return NextResponse.json(
+      { error: "Invalid email or password." },
+      { status: 401 },
+    );
+  }
+
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) {
     return NextResponse.json(
       { error: "Invalid email or password." },
       { status: 401 },
@@ -28,7 +38,12 @@ export async function POST(req: Request) {
   }
 
   const session: Session = {
-    user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    },
   };
 
   const res = NextResponse.json({ ok: true, session });

@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth/session";
 import {
   canSeeCourse,
   getCourseCta,
-  getProgress,
   hasPurchased,
   isEnrolled,
 } from "@/lib/domain/course-logic";
@@ -12,20 +11,19 @@ import { getBadgeForPoints } from "@/lib/domain/gamification";
 import {
   MOCK_COURSES,
   MOCK_ENROLLMENTS,
-  MOCK_PROGRESS,
   MOCK_PURCHASES,
+  getMockBasePoints,
 } from "@/lib/data/mock-learning";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
-import { getTotalEarnedPoints } from "@/lib/learning/points";
+import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
+import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
+import { getDbProgressMapForUser } from "@/lib/learning/progress";
+import { getTotalEarnedPointsForUser } from "@/lib/learning/points";
 
 import { MyCoursesClient, type MyCourseCard } from "./my-courses-client";
 
 function getTotalPoints(userId: string): number {
-  const total = MOCK_PROGRESS.filter((p) => p.userId === userId).reduce(
-    (sum, p) => sum + (p.completionPercent ?? 0),
-    0,
-  );
-  return Math.max(0, Math.round(total));
+  return getMockBasePoints(userId);
 }
 
 export default async function MyCoursesPage() {
@@ -33,22 +31,28 @@ export default async function MyCoursesPage() {
   if (!session) redirect("/auth/sign-in?next=/my-courses");
 
   const userId = session.user.id;
-  const earned = await getTotalEarnedPoints();
+  const earned = await getTotalEarnedPointsForUser(userId);
   const points = getTotalPoints(userId) + earned;
   const badge = getBadgeForPoints(points);
-  const completedCourses = await getCompletedCourseIds();
+  const completedCourses = await getCompletedCourseIds(userId);
+
+  const [enrolledIds, purchasedIds, dbProgress] = await Promise.all([
+    getEnrolledCourseIdsForUser(userId),
+    getPurchasedCourseIdsForUser(userId),
+    getDbProgressMapForUser(userId),
+  ]);
 
   const myCourses = MOCK_COURSES.filter((course) => {
     if (!canSeeCourse(course, session)) return false;
-    const enrolled = isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-    const purchased = hasPurchased(course.id, session, MOCK_PURCHASES);
+    const enrolled = enrolledIds.has(course.id) || isEnrolled(course.id, session, MOCK_ENROLLMENTS);
+    const purchased = purchasedIds.has(course.id) || hasPurchased(course.id, session, MOCK_PURCHASES);
     return enrolled || purchased;
   });
 
   const courses: MyCourseCard[] = myCourses.map((course) => {
-    const enrolled = isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-    const progress = getProgress(course.id, session, MOCK_PROGRESS);
-    const purchased = hasPurchased(course.id, session, MOCK_PURCHASES);
+    const enrolled = enrolledIds.has(course.id) || isEnrolled(course.id, session, MOCK_ENROLLMENTS);
+    const purchased = purchasedIds.has(course.id) || hasPurchased(course.id, session, MOCK_PURCHASES);
+    const progress = (dbProgress[course.id] as any) ?? null;
     const cta = getCourseCta({ course, session, enrolled, progress, purchased });
 
     const completionPercent = completedCourses.has(course.id)

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#g)"/>
+  <rect x="36" y="36" width="528" height="528" rx="28" fill="rgba(255,255,255,0.16)"/>
+  <text x="70" y="170" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="52" font-weight="900" fill="#ffffff">Course</text>
+  <text x="70" y="230" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="52" font-weight="900" fill="#ffffff">Square</text>
+  <text x="70" y="295" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="26" font-weight="700" fill="rgba(255,255,255,0.92)">Thumbnail • 600×600</text>
+  <text x="70" y="355" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="22" fill="rgba(255,255,255,0.85)">Replace under /public/images/courses</text>
+</svg>
