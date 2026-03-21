@@ -18,8 +18,13 @@ export default async function BackofficeCoursesPage(props: {
   const qRaw = sp?.q;
   const query = typeof qRaw === "string" ? qRaw.trim().slice(0, 80) : "";
 
+  const newRaw = sp?.new;
+  const initialCreateOpen = newRaw === "1" || newRaw === "true";
+
+  const viewRaw = sp?.view;
+  const view = viewRaw === "kanban" || viewRaw === "list" ? viewRaw : "list";
+
   const rows = await prisma.course.findMany({
-    where: query ? { title: { contains: query } } : undefined,
     orderBy: [{ updatedAt: "desc" }],
     select: {
       id: true,
@@ -50,5 +55,12 @@ export default async function BackofficeCoursesPage(props: {
     updatedAt: typeof (c as any).updatedAt === "string" ? (c as any).updatedAt : (c.updatedAt?.toISOString?.() ?? null),
   }));
 
-  return <BackofficeCoursesClient courses={courses} initialQuery={query} />;
+  return (
+    <BackofficeCoursesClient
+      courses={courses}
+      initialQuery={query}
+      initialView={view}
+      initialCreateOpen={initialCreateOpen}
+    />
+  );
 }

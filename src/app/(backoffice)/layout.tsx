@@ -15,51 +15,54 @@ export default async function BackofficeLayout({
   }
 
   return (
-    <div className="flex min-h-[100dvh] bg-background text-foreground">
-      <aside className="w-64 shrink-0 bg-primary text-white">
-        <div className="px-5 py-4 border-b border-white/15">
-          <Link href="/backoffice" className="flex items-center" aria-label="Backoffice home">
-            <Image
-              src="/images/LN_Horiz_white.png"
-              alt="Learnova"
-              width={180}
-              height={40}
-              priority
-              className="h-7 w-auto"
-            />
-          </Link>
-          <div className="text-xs opacity-80">Backoffice</div>
-        </div>
-        <div className="px-5 py-3 border-b border-white/15">
-          <div className="text-sm font-medium leading-5">{session.user.name}</div>
-          <div className="text-xs opacity-80">{session.user.role}</div>
-          <div className="mt-3">
-            <LogoutButton variant="ghost" redirectTo="/auth/sign-in" />
+    <div className="min-h-[100dvh] bg-background text-foreground">
+      <header className="border-b border-border">
+        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-4">
+            <Link href="/backoffice" className="flex items-center" aria-label="Backoffice home">
+              <Image
+                src="/images/LN_Horiz.png"
+                alt="Learnova"
+                width={180}
+                height={40}
+                priority
+                className="h-7 w-auto"
+              />
+            </Link>
+
+            <nav className="flex items-center gap-2 text-sm">
+              <Link
+                href="/backoffice/courses"
+                className="rounded-[10px] border border-border bg-background px-3 py-2 hover:bg-accent"
+              >
+                Courses
+              </Link>
+              <Link
+                href="/backoffice/reports"
+                className="rounded-[10px] border border-border bg-background px-3 py-2 hover:bg-accent"
+              >
+                Reporting
+              </Link>
+              <Link
+                href="/backoffice/settings"
+                className="rounded-[10px] border border-border bg-background px-3 py-2 hover:bg-accent"
+              >
+                Setting
+              </Link>
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-sm font-medium leading-5">{session.user.name}</div>
+              <div className="text-xs text-muted">{session.user.role}</div>
+            </div>
+            <LogoutButton variant="secondary" redirectTo="/auth/sign-in" />
           </div>
         </div>
-        <nav className="px-3 py-3 text-sm">
-          <Link
-            href="/backoffice/courses"
-            className="block rounded-[10px] px-3 py-2 hover:bg-white/10"
-          >
-            Courses
-          </Link>
-          <Link
-            href="/backoffice/reports"
-            className="mt-1 block rounded-[10px] px-3 py-2 hover:bg-white/10"
-          >
-            Reports
-          </Link>
-          <Link
-            href="/courses"
-            className="mt-1 block rounded-[10px] px-3 py-2 hover:bg-white/10"
-          >
-            Learner Site
-          </Link>
-        </nav>
-      </aside>
+      </header>
 
-      <main className="flex-1 p-6">{children}</main>
+      <main className="mx-auto max-w-[1200px] px-4 py-6">{children}</main>
     </div>
   );
 }

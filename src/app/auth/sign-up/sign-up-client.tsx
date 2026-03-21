@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { signup } from "@/lib/auth/client";
 
 function redirectForRole(role: string): string {
-  if (role === "instructor" || role === "admin") return "/backoffice";
+  if (role === "instructor" || role === "admin") return "/backoffice/courses";
   return "/courses";
 }
 

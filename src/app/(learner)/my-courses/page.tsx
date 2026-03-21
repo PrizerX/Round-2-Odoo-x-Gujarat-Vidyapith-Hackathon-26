@@ -4,16 +4,12 @@ import { getSession } from "@/lib/auth/session";
 import {
   canSeeCourse,
   getCourseCta,
-  hasPurchased,
-  isEnrolled,
 } from "@/lib/domain/course-logic";
 import { getBadgeForPoints } from "@/lib/domain/gamification";
 import {
-  MOCK_COURSES,
-  MOCK_ENROLLMENTS,
-  MOCK_PURCHASES,
   getMockBasePoints,
 } from "@/lib/data/mock-learning";
+import { getCoursesForLearnerCatalog } from "@/lib/data/db-catalog";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
 import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
 import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
@@ -42,16 +38,17 @@ export default async function MyCoursesPage() {
     getDbProgressMapForUser(userId),
   ]);
 
-  const myCourses = MOCK_COURSES.filter((course) => {
+  const catalog = await getCoursesForLearnerCatalog(session);
+  const myCourses = catalog.filter((course) => {
     if (!canSeeCourse(course, session)) return false;
-    const enrolled = enrolledIds.has(course.id) || isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-    const purchased = purchasedIds.has(course.id) || hasPurchased(course.id, session, MOCK_PURCHASES);
+    const enrolled = enrolledIds.has(course.id);
+    const purchased = purchasedIds.has(course.id);
     return enrolled || purchased;
   });
 
   const courses: MyCourseCard[] = myCourses.map((course) => {
-    const enrolled = enrolledIds.has(course.id) || isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-    const purchased = purchasedIds.has(course.id) || hasPurchased(course.id, session, MOCK_PURCHASES);
+    const enrolled = enrolledIds.has(course.id);
+    const purchased = purchasedIds.has(course.id);
     const progress = (dbProgress[course.id] as any) ?? null;
     const cta = getCourseCta({ course, session, enrolled, progress, purchased });
 
