@@ -28,17 +28,19 @@ export function SignUpClient({ next }: { next?: string }) {
   const [busy, setBusy] = React.useState(false);
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-xl items-center px-6 py-10">
-        <div className="w-full">
+    <div className="relative min-h-[100dvh] overflow-hidden bg-slate-50 text-foreground">
+      <div className="pointer-events-none absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-rose-200/60 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 right-10 h-64 w-64 rounded-full bg-sky-200/70 blur-3xl" />
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-2xl items-center px-6 py-10">
+        <div className="w-full space-y-6">
           <div className="mb-5 flex justify-center">
             <Image
               src="/images/LN_Horiz.png"
               alt="Learnova"
-              width={260}
-              height={56}
+              width={320}
+              height={72}
               priority
-              className="h-10 w-auto"
+              className="h-14 w-auto"
             />
           </div>
 
@@ -170,6 +172,23 @@ export function SignUpClient({ next }: { next?: string }) {
             </div>
             </CardContent>
           </Card>
+
+          <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-4 text-center shadow-sm backdrop-blur">
+            <div className="text-sm font-semibold text-slate-900">Build skills at your pace</div>
+            <p className="mt-1 text-sm text-muted">
+              Create your account to track progress, earn points, and unlock curated Odoo learning paths.
+            </p>
+            <div className="mt-3 grid gap-2 text-left text-xs text-slate-600 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200/70 bg-white/80 px-3 py-2">Personalized learning path</div>
+              <div className="rounded-lg border border-slate-200/70 bg-white/80 px-3 py-2">Practice with quizzes</div>
+              <div className="rounded-lg border border-slate-200/70 bg-white/80 px-3 py-2">Share your progress</div>
+            </div>
+            <Link href="/courses" className="mt-3 inline-flex">
+              <Button size="sm" className="px-5">
+                Explore courses
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

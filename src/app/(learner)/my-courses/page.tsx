@@ -70,6 +70,7 @@ export default async function MyCoursesPage() {
       coverImageUrl: course.coverImageUrl,
       tags: course.tags,
       completionPercent,
+      enrolled,
       cta: { label: cta.label, href: cta.href, disabled: cta.disabled },
       accessPill,
       priceInr: course.priceInr,
