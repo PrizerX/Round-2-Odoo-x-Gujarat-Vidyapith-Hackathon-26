@@ -387,6 +387,9 @@ function QuizViewer(props: {
   const [attemptId, setAttemptId] = React.useState<string | undefined>(undefined);
   const [resultOpen, setResultOpen] = React.useState(false);
   const [earnedPoints, setEarnedPoints] = React.useState(0);
+  const [questionAttempts, setQuestionAttempts] = React.useState<Record<string, number>>({});
+  const [questionCorrectAttempt, setQuestionCorrectAttempt] = React.useState<Record<string, number>>({});
+  const [feedback, setFeedback] = React.useState<string | null>(null);
 
   const questions = quiz?.questions ?? [];
   const total = questions.length;
@@ -398,6 +401,9 @@ function QuizViewer(props: {
     setIndex(0);
     setAnswers({});
     setAttemptId(undefined);
+    setQuestionAttempts({});
+    setQuestionCorrectAttempt({});
+    setFeedback(null);
     // Persist attempts per quiz (MVP via localStorage).
     if (typeof window !== "undefined" && props.storageKey) {
       try {
@@ -406,6 +412,26 @@ function QuizViewer(props: {
         setAttempt(Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0);
       } catch {
         setAttempt(0);
+      }
+
+      try {
+        const raw = window.localStorage.getItem(`learnova_quiz_question_state_${props.storageKey}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            attempts?: Record<string, number>;
+            correctAttempts?: Record<string, number>;
+          };
+          if (parsed && typeof parsed === "object") {
+            if (parsed.attempts && typeof parsed.attempts === "object") {
+              setQuestionAttempts(parsed.attempts);
+            }
+            if (parsed.correctAttempts && typeof parsed.correctAttempts === "object") {
+              setQuestionCorrectAttempt(parsed.correctAttempts);
+            }
+          }
+        }
+      } catch {
+        // ignore
       }
     } else {
       setAttempt(0);
@@ -450,6 +476,9 @@ function QuizViewer(props: {
 
   const selectedIndices = current ? (answers[current.id] ?? []) : [];
   const canProceed = selectedIndices.length > 0;
+  const currentAttemptNumber = current
+    ? Math.max(1, (questionAttempts[current.id] ?? 0) + 1)
+    : 1;
 
   const pointsPerCorrectForAttempt = (attemptNumber: number) => {
     const byAttempt = quiz.pointsPerCorrectByAttempt;
@@ -469,22 +498,17 @@ function QuizViewer(props: {
 
   const scoreQuiz = (attemptNumber: number) => {
     let correct = 0;
+    let totalPoints = 0;
     for (const q of questions) {
-      const selected = answers[q.id] ?? [];
-      const selectedSet = Array.from(new Set(selected)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
-      const correctSet = Array.from(new Set(q.correctIndices ?? [])).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
-
-      const isMatch =
-        selectedSet.length === correctSet.length &&
-        selectedSet.every((v, i) => v === correctSet[i]);
-
-      if (isMatch) correct += 1;
+      const answeredAttempt = questionCorrectAttempt[q.id];
+      if (typeof answeredAttempt !== "number" || !Number.isFinite(answeredAttempt)) continue;
+      correct += 1;
+      totalPoints += pointsPerCorrectForAttempt(Math.max(1, Math.floor(answeredAttempt)));
     }
 
-    const perCorrect = pointsPerCorrectForAttempt(attemptNumber);
-    const raw = correct * perCorrect;
-    // Make it feel rewarding even with mistakes (matches the “earned points” vibe).
+    const raw = totalPoints;
     const points = Math.max(5, Math.min(100, raw));
+    const perCorrect = pointsPerCorrectForAttempt(attemptNumber);
     return { correct, perCorrect, points };
   };
 
@@ -555,13 +579,42 @@ function QuizViewer(props: {
 
   const onProceed = () => {
     if (!canProceed) return;
+    if (!current) return;
+
+    const selected = selectedIndices;
+    const selectedSet = Array.from(new Set(selected)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+    const correctSet = Array.from(new Set(current.correctIndices ?? [])).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+    const isMatch =
+      selectedSet.length === correctSet.length &&
+      selectedSet.every((v, i) => v === correctSet[i]);
+
+    const attemptNumber = Math.max(1, (questionAttempts[current.id] ?? 0) + 1);
+
+    if (isMatch) {
+      setQuestionCorrectAttempt((prev) => ({
+        ...prev,
+        [current.id]: prev[current.id] ?? attemptNumber,
+      }));
+      setFeedback(null);
+    } else if (quiz.allowMultipleAttempts) {
+      setQuestionAttempts((prev) => ({
+        ...prev,
+        [current.id]: (prev[current.id] ?? 0) + 1,
+      }));
+      setAnswers((prev) => ({ ...prev, [current.id]: [] }));
+      setFeedback("Not quite. Try again to earn points for this question.");
+      return;
+    } else {
+      setFeedback(null);
+    }
+
     if (index < total - 1) {
       setIndex((v) => v + 1);
       return;
     }
 
-    const attemptNumber = Math.max(1, attempt);
-    const { correct, points } = scoreQuiz(attemptNumber);
+    const overallAttempt = Math.max(1, attempt);
+    const { correct, points } = scoreQuiz(overallAttempt);
     setEarnedPoints(points);
     setPhase("done");
     setResultOpen(true);
@@ -570,7 +623,7 @@ function QuizViewer(props: {
       quizId: quiz.id,
       points,
       attemptId,
-      attemptNumber,
+      attemptNumber: overallAttempt,
       correctCount: correct,
       totalQuestions: total,
     });
@@ -579,10 +632,36 @@ function QuizViewer(props: {
   const onRetry = () => {
     setIndex(0);
     setAnswers({});
+    setQuestionAttempts({});
+    setQuestionCorrectAttempt({});
+    setFeedback(null);
     setPhase("intro");
     setResultOpen(false);
     setEarnedPoints(0);
+
+    if (typeof window !== "undefined" && props.storageKey) {
+      try {
+        window.localStorage.removeItem(`learnova_quiz_question_state_${props.storageKey}`);
+      } catch {
+        // ignore
+      }
+    }
   };
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !props.storageKey) return;
+    try {
+      window.localStorage.setItem(
+        `learnova_quiz_question_state_${props.storageKey}`,
+        JSON.stringify({
+          attempts: questionAttempts,
+          correctAttempts: questionCorrectAttempt,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [props.storageKey, questionAttempts, questionCorrectAttempt]);
 
   if (phase === "intro") {
     return (
@@ -609,12 +688,21 @@ function QuizViewer(props: {
     <div className="space-y-6">
       <div className="text-sm text-muted">Question {Math.min(total, index + 1)} of {total}</div>
 
-      <div className="rounded-[16px] border border-border bg-surface p-5">
+      <div className="relative rounded-[16px] border border-border bg-surface p-5">
         <div className="text-sm font-medium text-foreground">{current?.prompt ?? "Question"}</div>
         <div className="mt-1 text-xs text-muted">
           {current?.allowMultipleCorrect ? "Select all that apply" : "Select one option"}
         </div>
+        <div className="absolute right-4 top-4 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+          Attempt {currentAttemptNumber} • {pointsPerCorrectForAttempt(currentAttemptNumber)} pts
+        </div>
       </div>
+
+      {feedback && (
+        <div className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {feedback}
+        </div>
+      )}
 
       <div className="space-y-3">
         {(current?.options ?? []).map((opt, i) => {
