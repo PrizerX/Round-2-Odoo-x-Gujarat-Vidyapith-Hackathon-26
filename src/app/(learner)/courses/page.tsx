@@ -13,15 +13,9 @@ import { getSession } from "@/lib/auth/session";
 import {
   formatDuration,
   getCourseCta,
-  hasPurchased,
-  isEnrolled,
   canSeeCourse,
 } from "@/lib/domain/course-logic";
-import {
-  MOCK_COURSES,
-  MOCK_ENROLLMENTS,
-  MOCK_PURCHASES,
-} from "@/lib/data/mock-learning";
+import { getCoursesForLearnerCatalog } from "@/lib/data/db-catalog";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
 import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
 import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
@@ -40,7 +34,8 @@ export default async function LearnerCoursesPage() {
       ])
     : [new Set<string>(), new Set<string>(), {} as Record<string, any>];
 
-  const courses = MOCK_COURSES.filter((c) => canSeeCourse(c, session));
+  const coursesAll = await getCoursesForLearnerCatalog(session);
+  const courses = coursesAll.filter((c) => canSeeCourse(c, session));
 
   return (
     <div className="space-y-5">
@@ -53,13 +48,8 @@ export default async function LearnerCoursesPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {courses.map((course) => {
-          const enrolled = session
-            ? enrolledIds.has(course.id) || isEnrolled(course.id, session, MOCK_ENROLLMENTS)
-            : false;
-
-          const purchased = session
-            ? purchasedIds.has(course.id) || hasPurchased(course.id, session, MOCK_PURCHASES)
-            : false;
+          const enrolled = session ? enrolledIds.has(course.id) : false;
+          const purchased = session ? purchasedIds.has(course.id) : false;
 
           const progress = session
             ? ((dbProgress[course.id] as any) ?? null)

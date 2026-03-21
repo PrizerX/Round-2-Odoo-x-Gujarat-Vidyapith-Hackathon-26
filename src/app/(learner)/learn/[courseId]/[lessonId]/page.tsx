@@ -2,169 +2,80 @@ import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import {
-  canSeeCourse,
-  hasPurchased,
-  isEnrolled,
-} from "@/lib/domain/course-logic";
-import {
-  MOCK_COURSES,
-  MOCK_ENROLLMENTS,
-  MOCK_PURCHASES,
-} from "@/lib/data/mock-learning";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
+import { toRouteLessonId } from "@/lib/data/db-catalog";
 
 import { LearnerPlayerClient, type PlayerLesson } from "./player-client";
 
-// Demo placeholder used for every video lesson for now.
-// Replace with real YouTube links later (per-lesson) when you curate the demo content.
-const PLACEHOLDER_YOUTUBE_VIDEO_URL = "https://www.youtube.com/watch?v=ysz5S6PUM-U";
-
-function buildDemoQuiz(args: { courseId: string; courseTitle: string }) {
-  const isCrm = /crm/i.test(args.courseTitle) || args.courseId === "course_4";
-
-  return {
-    id: `quiz_${args.courseId}`,
-    title: `${args.courseTitle} Quiz`,
-    allowMultipleAttempts: true,
-    pointsPerCorrect: 5,
-    // Attempt-based scoring (MVP): 1st attempt highest, then reduced.
-    pointsPerCorrectByAttempt: [5, 4, 3, 2],
-    questions: isCrm
-      ? [
-          {
-            id: "q1",
-            prompt: "In Odoo CRM, what does a pipeline stage represent?",
-            options: [
-              "A step in your sales process",
-              "A product category",
-              "A warehouse location",
-            ],
-            correctIndex: 0,
-          },
-          {
-            id: "q2",
-            prompt: "Which item is typically managed as a CRM record in Odoo?",
-            options: ["Lead / Opportunity", "Journal Entry", "Stock Move"],
-            correctIndex: 0,
-          },
-          {
-            id: "q3",
-            prompt: "What is an Activity used for in CRM?",
-            options: [
-              "A reminder / next action like call or email",
-              "A payroll rule",
-              "A tax configuration",
-            ],
-            correctIndex: 0,
-          },
-          {
-            id: "q4",
-            prompt: "A good reason to use stages is to…",
-            options: [
-              "Track deal progress and prioritize follow-ups",
-              "Increase image resolution",
-              "Disable user access",
-            ],
-            correctIndex: 0,
-          },
-        ]
-      : [
-          {
-            id: "q1",
-            prompt: "What does course completion percentage represent?",
-            options: [
-              "How much of the course content you’ve finished",
-              "Your device battery level",
-              "The price discount",
-            ],
-            correctIndex: 0,
-          },
-          {
-            id: "q2",
-            prompt: "A quiz is usually placed at the end of a module to…",
-            options: [
-              "Evaluate understanding",
-              "Change the UI theme",
-              "Update your email address",
-            ],
-            correctIndex: 0,
-          },
-          {
-            id: "q3",
-            prompt: "Which UI element is best for single-choice answers?",
-            options: ["Radio buttons", "Checkboxes", "File picker"],
-            correctIndex: 0,
-          },
-          {
-            id: "q4",
-            prompt: "Multiple attempts are useful because they…",
-            options: [
-              "Encourage retry and learning",
-              "Remove all questions",
-              "Block course access",
-            ],
-            correctIndex: 0,
-          },
-        ],
-  };
+function isBackofficeViewer(role: string | undefined): boolean {
+  return role === "instructor" || role === "admin";
 }
 
-function parseLessonNumber(lessonId: string): number {
-  const m = /^lesson_(\d+)$/.exec(lessonId);
-  if (!m) return 1;
-  const n = Number(m[1]);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-function buildLessons(args: {
+function buildPlayerLessons(args: {
   courseId: string;
-  courseTitle: string;
-  lessonCount: number;
   completionPercent: number;
+  rows: Array<{
+    id: string;
+    title: string;
+    type: PlayerLesson["type"];
+    description: string | null;
+    videoUrl: string | null;
+    sortOrder: number;
+    quiz: null | {
+      id: string;
+      title: string;
+      allowMultipleAttempts: boolean;
+      pointsPerCorrect: number;
+      rewardRules: Array<{ attemptNumber: number; pointsPerCorrect: number }>;
+      questions: Array<{
+        id: string;
+        prompt: string;
+        sortOrder: number;
+        options: Array<{ text: string; sortOrder: number; isCorrect: boolean }>;
+      }>;
+    };
+  }>;
 }): PlayerLesson[] {
-  const { lessonCount, completionPercent } = args;
-  const safeLessonCount = Math.max(4, lessonCount || 1);
-  const completedCount = Math.floor(
-    (Math.max(0, Math.min(100, completionPercent)) / 100) * safeLessonCount,
-  );
+  const safePercent = Math.max(0, Math.min(100, args.completionPercent));
+  const completedCount = Math.floor((safePercent / 100) * Math.max(1, args.rows.length));
 
-  const titleOverrides: Record<number, string> = {
-    1: "Advanced Sales & CRM Automation in Odoo",
-    2: "Document",
-    3: "Video",
-    [safeLessonCount]: "Quiz",
-  };
+  return args.rows.map((l, idx) => {
+    const quiz = l.quiz
+      ? {
+          id: l.quiz.id,
+          title: l.quiz.title,
+          allowMultipleAttempts: l.quiz.allowMultipleAttempts,
+          pointsPerCorrect: l.quiz.pointsPerCorrect,
+          pointsPerCorrectByAttempt: (l.quiz.rewardRules ?? [])
+            .slice()
+            .sort((a, b) => a.attemptNumber - b.attemptNumber)
+            .map((r) => r.pointsPerCorrect),
+          questions: (l.quiz.questions ?? [])
+            .slice()
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((q) => {
+              const opts = (q.options ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+              const correctIndex = Math.max(0, opts.findIndex((o) => o.isCorrect));
+              return {
+                id: q.id,
+                prompt: q.prompt,
+                options: opts.map((o) => o.text),
+                correctIndex,
+              };
+            }),
+        }
+      : undefined;
 
-  const lessons: PlayerLesson[] = [];
-  for (let i = 1; i <= safeLessonCount; i += 1) {
-    const type: PlayerLesson["type"] =
-      i === safeLessonCount ? "quiz" : i % 2 === 0 ? "doc" : "video";
-    const title = titleOverrides[i] ?? `Content ${i}`;
-
-    const description =
-      type === "video"
-        ? "This is a demo video lesson. Replace the YouTube link later."
-        : type === "doc"
-          ? "This is a demo document lesson (viewer placeholder)."
-          : type === "quiz"
-            ? "This is a demo quiz lesson (viewer placeholder)."
-            : "This is demo content (viewer placeholder).";
-
-    lessons.push({
-      id: `lesson_${i}`,
-      title,
-      type,
-      completed: i <= completedCount,
-      description,
-      videoUrl: type === "video" ? PLACEHOLDER_YOUTUBE_VIDEO_URL : undefined,
-      quiz:
-        type === "quiz"
-          ? buildDemoQuiz({ courseId: args.courseId, courseTitle: args.courseTitle })
-          : undefined,
-    });
-  }
-  return lessons;
+    return {
+      id: toRouteLessonId(args.courseId, l.id),
+      title: l.title,
+      type: l.type,
+      completed: idx + 1 <= completedCount,
+      description: l.description ?? undefined,
+      videoUrl: l.videoUrl ?? undefined,
+      quiz,
+    };
+  });
 }
 
 export default async function LearnerPlayerPage({
@@ -181,14 +92,22 @@ export default async function LearnerPlayerPage({
     );
   }
 
-  const course = MOCK_COURSES.find((c) => c.id === courseId);
-  if (!course) redirect("/courses");
+  const courseRow = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: {
+      id: true,
+      title: true,
+      published: true,
+      visibility: true,
+      accessRule: true,
+    },
+  });
 
-  // Visibility & access guard (prototype).
-  if (!canSeeCourse(course, session)) redirect("/courses");
+  if (!courseRow) redirect("/courses");
 
-  const enrolled = isEnrolled(courseId, session, MOCK_ENROLLMENTS);
-  const purchased = hasPurchased(courseId, session, MOCK_PURCHASES);
+  const viewerIsBackoffice = isBackofficeViewer(session.user.role);
+  if (!viewerIsBackoffice && !courseRow.published) redirect("/courses");
+  if (courseRow.visibility === "signed_in" && !session) redirect("/courses");
 
   // L3: join is explicit for open courses; enforce server-side.
   let enrolledDb = false;
@@ -209,14 +128,14 @@ export default async function LearnerPlayerPage({
 
   const hasAccessViaDb = enrolledDb || purchasedDb;
 
-  if (course.accessRule === "invitation" && !(enrolledDb || enrolled)) {
+  if (courseRow.accessRule === "invitation" && !enrolledDb) {
     redirect(`/courses/${courseId}`);
   }
-  if (course.accessRule === "payment" && !(purchasedDb || purchased)) {
+  if (courseRow.accessRule === "payment" && !purchasedDb) {
     redirect(`/courses/${courseId}`);
   }
 
-  if (course.accessRule === "open" && !(hasAccessViaDb || enrolled || purchased)) {
+  if (courseRow.accessRule === "open" && !hasAccessViaDb) {
     redirect(`/courses/${courseId}`);
   }
 
@@ -240,15 +159,48 @@ export default async function LearnerPlayerPage({
     ? 100
     : (progress?.completionPercent ?? 0);
 
-  const lessons = buildLessons({
+  const lessonRows = (await prisma.lesson.findMany({
+    where: { courseId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      description: true,
+      videoUrl: true,
+      sortOrder: true,
+      quiz: {
+        select: {
+          id: true,
+          title: true,
+          allowMultipleAttempts: true,
+          pointsPerCorrect: true,
+          rewardRules: { select: { attemptNumber: true, pointsPerCorrect: true } },
+          questions: {
+            select: {
+              id: true,
+              prompt: true,
+              sortOrder: true,
+              options: { select: { text: true, sortOrder: true, isCorrect: true } },
+            },
+          },
+        },
+      },
+    },
+  })) as unknown as Parameters<typeof buildPlayerLessons>[0]["rows"];
+
+  const lessons = buildPlayerLessons({
     courseId,
-    courseTitle: course.title,
-    lessonCount: Math.max(1, course.lessonCount || 1),
     completionPercent,
+    rows: lessonRows,
   });
 
-  const lessonNumber = parseLessonNumber(lessonId);
-  const boundedLessonId = `lesson_${Math.min(Math.max(1, lessonNumber), lessons.length)}`;
+  if (lessons.length === 0) {
+    redirect(`/courses/${courseId}`);
+  }
+
+  const lessonIds = lessons.map((l) => l.id);
+  const boundedLessonId = lessonIds.includes(lessonId) ? lessonId : (lessonIds[0] as string);
 
   // L3: best-effort DB sync for progress once the learner has joined.
   try {
@@ -258,11 +210,12 @@ export default async function LearnerPlayerPage({
     });
 
     if (dbCourse) {
-      const shouldSync = course.accessRule === "open" ? (hasAccessViaDb || enrolled) : true;
+      const shouldSync = courseRow.accessRule === "open" ? hasAccessViaDb : true;
       if (!shouldSync) throw new Error("not_joined");
 
-      // Compute progress from completed lessons (lesson_1 => 0%). Caps at 99; 100 is set on completion.
-      const completedLessons = Math.max(0, Math.min(lessons.length, Math.max(0, lessonNumber - 1)));
+      // Compute progress from completed lessons (index-based; caps at 99; 100 is set on completion).
+      const currentIndex = Math.max(0, lessons.findIndex((l) => l.id === boundedLessonId));
+      const completedLessons = Math.max(0, Math.min(lessons.length, currentIndex));
       const rawPercent = lessons.length > 0 ? Math.floor((completedLessons / lessons.length) * 100) : 0;
       const computedPercent = Math.max(0, Math.min(99, rawPercent));
 
@@ -304,7 +257,7 @@ export default async function LearnerPlayerPage({
   return (
     <LearnerPlayerClient
       courseId={courseId}
-      courseTitle={course.title}
+      courseTitle={courseRow.title}
       completionPercent={completionPercent}
       lessons={lessons}
       currentLessonId={boundedLessonId}

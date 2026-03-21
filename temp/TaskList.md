@@ -5,7 +5,7 @@
 - Strict UI tokens applied (Primary `#714b67`, Accent `#f3f4f6`, Base `#ffffff`).
 - All Add/Edit actions must use modals; all Delete actions must have confirmation.
 - Local Auth + Local DB required (no Supabase); users are persisted in local SQLite (Prisma).
-    - Course catalog/content is still mock-driven (until Module A CRUD is wired).
+    - Course catalog/content is now DB-driven for Module B (published courses) so Module A changes flow through to learners.
     - Learning state is DB-first when signed-in (attempts/reviews/progress/points), with cookie/localStorage fallback kept for MVP robustness.
 - This TaskList mirrors the provided Learnova Architecture sections (Module A + Module B).
 - Publishing: only published courses are visible to learners.
@@ -16,14 +16,15 @@
 - Basic UI kit primitives created: Button/Card/Input/Modal/ConfirmDialog.
 - Route groups created for `(learner)` and `(backoffice)`.
 - Auth pages split into `/auth/sign-in` and `/auth/sign-up` (DB-backed auth; session stored in `learnova_session` cookie).
+- Branding polish: auth pages now show the horizontal PNG logo above the form card (not inside the card header/box).
 - Role-based protection added for `/backoffice/*` (instructor/admin only).
 - Learner navbar shows Courses + auth status (Sign in / user + Logout).
-- Learner discovery `/courses` implemented with dynamic CTA (Join/Start/Continue/Buy).
+- Learner discovery `/courses` implemented with dynamic CTA (Join/Start/Continue/Buy), now backed by SQLite (Prisma) instead of mock catalog.
 - Join-first UX: open courses require explicit Join before learning; player route is gated to prevent bypass.
 - Learner `/my-courses` implemented with progress cards + total points + badge (trimmed to 4 demo items).
 - Learner `/profile` implemented with badge ladder (Newbie → Master).
 - Learner course details `/courses/[courseId]` redesigned to match raw mockup (banner + cover + square thumbnail placeholders, progress/stats card, tabs, searchable content list).
-- Learner player `/learn/[courseId]/[lessonId]` redesigned to match raw mockup (left course panel + right viewer pane).
+- Learner player `/learn/[courseId]/[lessonId]` redesigned to match raw mockup (left course panel + right viewer pane), now backed by SQLite lessons/quizzes.
 - YouTube video embeds wired for video lessons (placeholder URLs supported).
 - Proper quiz flow implemented (start → questions → results modal) with simple scoring.
 - Quiz completion marks course as 100% complete across learner pages (demo persistence via httpOnly cookie + API route).
@@ -52,6 +53,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Update `/api/auth/signup` to create a DB user (unique email) + hash password
 - [x] Update `/api/auth/login` to verify password hash against DB
 - [x] Keep `/api/auth/me` + `/api/auth/logout` behavior unchanged
+- [x] Auth UI branding: `LN_Horiz.png` displayed above the Sign in/Sign up form card; JSX/build issues resolved
 - [ ] (Optional but recommended) Sign the session cookie to prevent tampering (keep same session payload contract)
 
 ### L3) Learning persistence (incremental, after L1–L2)
@@ -65,25 +67,27 @@ Goal: persist users (and later learning data) using a local database while **kee
 
 ### A1) Courses Dashboard (Kanban/List)
 - [x] Backoffice route skeleton exists: `/backoffice`, `/backoffice/courses`
-- [ ] Kanban view
+- [x] Kanban view
 - [x] List view (DB-backed)
 - [x] Search courses by name
 - [x] Course card info: title, tags, views, total lessons, total duration, published badge
 - [x] Action: Edit
 - [x] Action: Preview (learner view)
-- [ ] Action: Share (generate/copy link)
+- [x] Action: Share (generate/copy link)
 - [x] Create course: `+` button → popup modal → enter course name
 
 ### A2) Course Form (Edit Course)
 - [x] Edit route skeleton exists: `/backoffice/courses/[courseId]`
-- [ ] Header actions: Publish toggle, Preview (learner view), Add Attendees (invite), Contact Attendees, Upload images (cover/banner/thumbnail)
-- [ ] Fields: Title (required), Tags, Website (required when published), Responsible/Course Admin
+- [x] Header actions: Publish toggle, Preview (learner view)
+- [ ] Header actions: Add Attendees (invite), Contact Attendees, Upload images (cover/banner/thumbnail)
+- [x] Fields: Title (required), Tags, Website, Visibility, Access rules (+ price)
+- [ ] Fields: Responsible/Course Admin
 - [ ] Tabs: Content / Description / Options / Quiz (4-tab layout)
 
 ### A3) Lessons / Content Management
-- [ ] Lesson list (title + type)
+- [x] Lesson list (title + type)
 - [ ] 3-dot menu actions: Edit, Delete (with confirmation)
-- [ ] Add Content button opens Lesson Editor popup
+- [x] Add Content button opens Lesson Editor popup (basic add modal)
 
 ### A4) Lesson Editor (Add/Edit)
 - [ ] Modal with tabs: Content / Description / Additional Attachments
@@ -179,7 +183,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Implement Navbar with "Courses" menu.
 
 ## Phase 2: Instructor Backoffice (Hours 3-8)
-- [ ] **Courses Dashboard:** Kanban/List toggle + search + card actions.
+- [x] **Courses Dashboard:** Kanban/List toggle + search + card actions.
 - [ ] **Course Form:** Header actions + fields + 4 tabs.
 - [ ] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
 - [ ] **Lesson Editor:** video/doc/image + description + attachments.

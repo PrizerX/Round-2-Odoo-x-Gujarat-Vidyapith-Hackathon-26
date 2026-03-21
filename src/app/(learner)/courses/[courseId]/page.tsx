@@ -3,14 +3,11 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import {
   getCourseCta,
-  hasPurchased,
-  isEnrolled,
 } from "@/lib/domain/course-logic";
 import {
-  MOCK_COURSES,
-  MOCK_ENROLLMENTS,
-  MOCK_PURCHASES,
-} from "@/lib/data/mock-learning";
+  getCourseForLearnerById,
+  getCourseLessonsForLearner,
+} from "@/lib/data/db-catalog";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
 import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
 import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
@@ -20,27 +17,38 @@ import { CourseDetailsClient, type CourseDetailsContentItem } from "./course-det
 
 function buildContentList(args: {
   courseId: string;
-  lessonCount: number;
+  lessonIdsInOrder: string[];
+  lessonTitlesInOrder: string[];
   completionPercent: number;
 }): CourseDetailsContentItem[] {
-  const { courseId, lessonCount, completionPercent } = args;
-  const safeLessonCount = Math.max(1, lessonCount || 1);
-  const completedCount = Math.floor((Math.max(0, Math.min(100, completionPercent)) / 100) * safeLessonCount);
-
-  const titles = [
-    "Advanced Sales & CRM Automation in Odoo",
-    "Odoo CRM: Advanced Features & Best Practices",
-  ];
+  const { courseId, lessonIdsInOrder, lessonTitlesInOrder, completionPercent } = args;
+  const safeLessonCount = Math.max(1, lessonIdsInOrder.length || 1);
+  const completedCount = Math.floor(
+    (Math.max(0, Math.min(100, completionPercent)) / 100) * safeLessonCount,
+  );
 
   const items: CourseDetailsContentItem[] = [];
-  for (let i = 1; i <= safeLessonCount; i += 1) {
+  for (let i = 0; i < lessonIdsInOrder.length; i += 1) {
+    const id = lessonIdsInOrder[i] ?? `lesson_${i + 1}`;
+    const title = lessonTitlesInOrder[i] ?? `Content ${i + 1}`;
     items.push({
-      id: `lesson_${i}`,
-      title: titles[i - 1] ?? `Content ${i}`,
-      href: `/learn/${courseId}/lesson_${i}`,
-      completed: i <= completedCount,
+      id,
+      title,
+      href: `/learn/${courseId}/${id}`,
+      completed: i + 1 <= completedCount,
     });
   }
+
+  // Defensive fallback when a course has no lessons yet.
+  if (items.length === 0) {
+    items.push({
+      id: "lesson_1",
+      title: "Content 1",
+      href: `/learn/${courseId}/lesson_1`,
+      completed: false,
+    });
+  }
+
   return items;
 }
 
@@ -59,7 +67,7 @@ export default async function LearnerCourseDetailsPage({
 }) {
   const { courseId } = await params;
   const session = await getSession();
-  const course = MOCK_COURSES.find((c) => c.id === courseId);
+  const course = await getCourseForLearnerById({ courseId, session });
 
   if (!course) {
     return (
@@ -72,9 +80,6 @@ export default async function LearnerCourseDetailsPage({
     );
   }
 
-  const enrolledMock = isEnrolled(course.id, session, MOCK_ENROLLMENTS);
-  const purchasedMock = hasPurchased(course.id, session, MOCK_PURCHASES);
-
   const [enrolledIds, purchasedIds, dbProgress] = session
     ? await Promise.all([
         getEnrolledCourseIdsForUser(session.user.id),
@@ -86,8 +91,8 @@ export default async function LearnerCourseDetailsPage({
   const enrolledDb = session ? enrolledIds.has(course.id) : false;
   const purchasedDb = session ? purchasedIds.has(course.id) : false;
 
-  const enrolledEffective = enrolledDb || enrolledMock;
-  const purchasedEffective = purchasedDb || purchasedMock;
+  const enrolledEffective = enrolledDb;
+  const purchasedEffective = purchasedDb;
   const progress = (dbProgress as any) ?? null;
 
   const cta = getCourseCta({
@@ -102,10 +107,16 @@ export default async function LearnerCourseDetailsPage({
   const completionPercent = completedCourses.has(course.id)
     ? 100
     : (progress?.completionPercent ?? 0);
-  const counts = computeCounts({ lessonCount: course.lessonCount, completionPercent });
+
+  const lessons = await getCourseLessonsForLearner({ courseId, session });
+  const lessonIdsInOrder = (lessons ?? []).map((l) => l.routeLessonId);
+  const lessonTitlesInOrder = (lessons ?? []).map((l) => l.title);
+  const lessonCount = Math.max(1, lessonIdsInOrder.length || course.lessonCount || 1);
+  const counts = computeCounts({ lessonCount, completionPercent });
   const content = buildContentList({
     courseId,
-    lessonCount: counts.lessonCount,
+    lessonIdsInOrder,
+    lessonTitlesInOrder,
     completionPercent: counts.completionPercent,
   });
 

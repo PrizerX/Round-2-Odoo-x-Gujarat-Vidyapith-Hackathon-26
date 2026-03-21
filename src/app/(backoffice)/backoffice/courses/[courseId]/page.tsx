@@ -1,7 +1,18 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
+import { toRouteLessonId } from "@/lib/data/db-catalog";
+
+import {
+  BackofficeEditCourseClient,
+  type BackofficeCourseEditModel,
+  type BackofficeLessonListItem,
+} from "./edit-course-client";
+
+function isInstructorOrAdmin(role: string | undefined) {
+  return role === "instructor" || role === "admin";
+}
 
 export default async function BackofficeEditCoursePage({
   params,
@@ -10,39 +21,61 @@ export default async function BackofficeEditCoursePage({
 }) {
   const { courseId } = await params;
 
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="text-xs text-muted">
-            <Link href="/backoffice/courses" className="hover:underline">
-              Courses
-            </Link>
-            <span className="px-2">/</span>
-            <span className="text-foreground">{courseId}</span>
-          </div>
-          <h1 className="text-xl font-semibold">Edit Course</h1>
-        </div>
-        <Button variant="primary">Save</Button>
-      </div>
+  const session = await getSession();
+  if (!session || !isInstructorOrAdmin(session.user.role)) {
+    redirect(`/auth/sign-in?next=${encodeURIComponent(`/backoffice/courses/${courseId}`)}`);
+  }
 
-      <Card>
-        <CardHeader>
-          <CardTitle>4-Tab Layout (coming next)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted">
-          <div>1) Content — lesson list + 3-dot actions + Add Content (modal)</div>
-          <div>2) Description — rich text editor</div>
-          <div>3) Options — visibility + access rules</div>
-          <div>4) Quiz — linked quizzes + Add Quiz (modal)</div>
-        </CardContent>
-      </Card>
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      tagsText: true,
+      website: true,
+      published: true,
+      visibility: true,
+      accessRule: true,
+      priceInr: true,
+    },
+  });
 
-      <div className="flex items-center gap-3">
-        <Button variant="secondary">Add Content (modal)</Button>
-        <Button variant="secondary">Add Quiz (modal)</Button>
-        <Button variant="danger">Delete Course (confirm)</Button>
-      </div>
-    </div>
-  );
+  if (!course) {
+    redirect("/backoffice/courses");
+  }
+
+  const lessonsRows = (await prisma.lesson.findMany({
+    where: { courseId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, title: true, type: true, sortOrder: true },
+  })) as unknown as Array<{
+    id: string;
+    title: string;
+    type: BackofficeLessonListItem["type"];
+    sortOrder: number;
+  }>;
+
+  const model: BackofficeCourseEditModel = {
+    id: course.id,
+    title: course.title,
+    description: course.description ?? "",
+    tagsText: course.tagsText ?? "",
+    website: course.website ?? null,
+    published: !!course.published,
+    visibility: course.visibility,
+    accessRule: course.accessRule,
+    priceInr: typeof course.priceInr === "number" ? course.priceInr : null,
+    responsibleName: session.user.name,
+  };
+
+  const lessons: BackofficeLessonListItem[] = lessonsRows.map((l) => ({
+    id: l.id,
+    routeLessonId: toRouteLessonId(courseId, l.id),
+    title: l.title,
+    type: l.type,
+    sortOrder: l.sortOrder,
+  }));
+
+  return <BackofficeEditCourseClient course={model} lessons={lessons} />;
 }
