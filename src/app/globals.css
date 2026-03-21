@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root {
+  /* Learnova brand tokens (source of truth: temp/GUIDE.md) */
+  --learnova-primary: #714b67;
+  --learnova-accent: #f3f4f6;
+  --learnova-base: #ffffff;
+
+  --learnova-foreground: #111827;
+  --learnova-muted: #6b7280;
+  --learnova-border: #e5e7eb;
+
+  /* App-level surfaces */
+  --background: var(--learnova-accent);
+  --foreground: var(--learnova-foreground);
+  --surface: var(--learnova-base);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-primary: var(--learnova-primary);
+  --color-accent: var(--learnova-accent);
+  --color-muted: var(--learnova-muted);
+  --color-border: var(--learnova-border);
+
+  /* Rounded & shadows to match the clean mockup style */
+  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+    Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}

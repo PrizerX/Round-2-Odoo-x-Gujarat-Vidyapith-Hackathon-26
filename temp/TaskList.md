@@ -2,16 +2,28 @@
 
 ## Rules To Consider
 
+- Strict UI tokens applied (Primary `#714b67`, Accent `#f3f4f6`, Base `#ffffff`).
+- All Add/Edit actions must use modals; all Delete actions must have confirmation.
+- Supabase planned for Auth + DB; currently using mock auth + mock data.
+
+## ✅ Completed so far
+- Next.js App Router + TypeScript + Tailwind scaffolded in repo root.
+- Basic UI kit primitives created: Button/Card/Input/Modal/ConfirmDialog.
+- Route groups created for `(learner)` and `(backoffice)`.
+- `/auth` single-page login + signup implemented (demo accounts) with cookie session.
+- Role-based protection added for `/backoffice/*` (instructor/admin only).
+- Learner navbar shows Courses + auth status (Sign in / user + Logout).
+
 
 
 ## Phase 1: Foundation & Routing (Hours 0-3)
-- [ ] Initialize Next.js (App Router) + Tailwind CSS + Lucide Icons.
+- [x] Initialize Next.js (App Router) + Tailwind CSS + Lucide Icons.
 - [ ] Define shared Types/Interfaces (Course, Lesson, Quiz, User, Progress).
-- [ ] Setup Directory Structure:
+- [x] Setup Directory Structure:
     - [cite_start]`/app/(backoffice)` -> Admin/Instructor routes[cite: 4, 28].
     - [cite_start]`/app/(learner)` -> Website/App routes[cite: 5, 154].
     - `/components/ui` -> Shared buttons, cards, inputs.
-- [ ] [cite_start]Implement Navbar with "Courses" menu[cite: 155].
+- [x] [cite_start]Implement Navbar with "Courses" menu[cite: 155].
 
 ## Phase 2: Instructor Backoffice (Hours 3-8)
 - [ ] [cite_start]**Courses Dashboard:** Toggle between Kanban and List views[cite: 29, 32].
