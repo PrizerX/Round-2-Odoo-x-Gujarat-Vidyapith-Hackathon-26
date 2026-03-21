@@ -4,7 +4,7 @@
 
 - Strict UI tokens applied (Primary `#714b67`, Accent `#f3f4f6`, Base `#ffffff`).
 - All Add/Edit actions must use modals; all Delete actions must have confirmation.
-- Supabase planned for Auth + DB; currently using mock auth + mock data.
+- Local Auth + Local DB required (no Supabase); currently using mock auth + mock data.
 - Publishing: only published courses are visible to learners.
 - Guests can browse (if allowed) but must sign in to start learning.
 
@@ -26,6 +26,32 @@
 - Quiz points now sync into `/my-courses` + `/profile` totals (demo persistence via httpOnly cookie).
 - Demo utility: “Reset progress” button on course details clears completion + points for a course.
 - Visual polish: green progress indicators everywhere; paid price emphasized; “Enrolled” ribbon shown on catalog cards.
+
+---
+
+## Local Auth + Local DB (NEW requirement — no Supabase)
+
+Goal: persist users (and later learning data) using a local database while **keeping the existing** `/api/auth/*` endpoints and the `learnova_session` cookie shape so current flows don’t break.
+
+### L1) Database & ORM setup
+- [ ] Pick DB engine for hackathon runtime:
+    - SQLite via Prisma (fastest local setup)
+    - OR Postgres local/Docker (best parity)
+- [ ] Add Prisma to the project (`prisma/`, `schema.prisma`, migrations)
+- [ ] Create seed script to insert demo users (learner/instructor/admin)
+- [ ] Add `.env` with `DATABASE_URL` (+ app secret if signing sessions)
+
+### L2) Auth persistence (compatible migration)
+- [ ] Update `/api/auth/signup` to create a DB user (unique email) + hash password
+- [ ] Update `/api/auth/login` to verify password hash against DB
+- [ ] Keep `/api/auth/me` + `/api/auth/logout` behavior unchanged
+- [ ] (Optional but recommended) Sign the session cookie to prevent tampering (keep same session payload contract)
+
+### L3) Learning persistence (incremental, after L1–L2)
+- [ ] Move reviews persistence from localStorage → DB (per-course, per-user)
+- [ ] Move quiz attempts from localStorage → DB (per-course, per-quiz, per-user)
+- [ ] Move completion + points from cookies → DB (store by userId + courseId)
+- [ ] Keep cookie-based behavior as a temporary fallback during migration
 
 
 ## Module A — Instructor/Admin Backoffice (Architecture Checklist)
