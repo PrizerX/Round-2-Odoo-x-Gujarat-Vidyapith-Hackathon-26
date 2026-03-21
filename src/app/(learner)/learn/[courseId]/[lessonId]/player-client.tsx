@@ -30,6 +30,8 @@ export type QuizDefinition = {
   title: string;
   allowMultipleAttempts: boolean;
   pointsPerCorrect: number;
+  // Optional attempt-based scoring override. Index 0 = attempt 1, index 1 = attempt 2, etc.
+  pointsPerCorrectByAttempt?: number[];
   questions: QuizQuestion[];
 };
 
@@ -132,7 +134,11 @@ function PlayerContentViewer(props: { lesson: PlayerLesson | null | undefined })
   );
 }
 
-function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: number) => void }) {
+function QuizViewer(props: {
+  quiz?: QuizDefinition;
+  storageKey?: string;
+  onCompleted?: (points: number) => void;
+}) {
   const quiz = props.quiz;
 
   const [phase, setPhase] = React.useState<"intro" | "in_progress" | "done">(
@@ -153,10 +159,21 @@ function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: numbe
     setPhase("intro");
     setIndex(0);
     setAnswers({});
-    setAttempt(0);
+    // Persist attempts per quiz (MVP via localStorage).
+    if (typeof window !== "undefined" && props.storageKey) {
+      try {
+        const raw = window.localStorage.getItem(`learnova_quiz_attempt_${props.storageKey}`);
+        const n = raw ? Number(raw) : 0;
+        setAttempt(Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0);
+      } catch {
+        setAttempt(0);
+      }
+    } else {
+      setAttempt(0);
+    }
     setResultOpen(false);
     setEarnedPoints(0);
-  }, [quiz?.id]);
+  }, [quiz?.id, props.storageKey]);
 
   if (!quiz || total === 0) {
     return (
@@ -169,21 +186,50 @@ function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: numbe
   const selectedIndex = current ? answers[current.id] : undefined;
   const canProceed = typeof selectedIndex === "number";
 
-  const scoreQuiz = () => {
+  const pointsPerCorrectForAttempt = (attemptNumber: number) => {
+    const byAttempt = quiz.pointsPerCorrectByAttempt;
+    if (Array.isArray(byAttempt) && byAttempt.length > 0) {
+      const idx = Math.max(0, attemptNumber - 1);
+      const v = byAttempt[idx] ?? byAttempt[byAttempt.length - 1];
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.round(v);
+    }
+
+    if (!quiz.allowMultipleAttempts) return quiz.pointsPerCorrect;
+
+    // Sensible default reduction curve when not configured.
+    const multipliers = [1, 0.8, 0.6, 0.4];
+    const m = multipliers[Math.min(multipliers.length - 1, Math.max(0, attemptNumber - 1))] ?? 1;
+    return Math.max(1, Math.round(quiz.pointsPerCorrect * m));
+  };
+
+  const scoreQuiz = (attemptNumber: number) => {
     let correct = 0;
     for (const q of questions) {
       const a = answers[q.id];
       if (typeof a === "number" && a === q.correctIndex) correct += 1;
     }
 
-    const raw = correct * quiz.pointsPerCorrect;
+    const perCorrect = pointsPerCorrectForAttempt(attemptNumber);
+    const raw = correct * perCorrect;
     // Make it feel rewarding even with mistakes (matches the “earned points” vibe).
     const points = Math.max(5, Math.min(100, raw));
-    return { correct, points };
+    return { correct, perCorrect, points };
   };
 
   const onStart = () => {
-    setAttempt((a) => a + 1);
+    setAttempt((a) => {
+      const next = a + 1;
+      if (typeof window !== "undefined" && props.storageKey) {
+        try {
+          window.localStorage.setItem(`learnova_quiz_attempt_${props.storageKey}`,
+            String(next),
+          );
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
     setPhase("in_progress");
   };
 
@@ -194,7 +240,7 @@ function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: numbe
       return;
     }
 
-    const { points } = scoreQuiz();
+    const { points } = scoreQuiz(Math.max(1, attempt));
     setEarnedPoints(points);
     setPhase("done");
     setResultOpen(true);
@@ -218,6 +264,9 @@ function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: numbe
             <div className="text-sm text-muted">
               - {quiz.allowMultipleAttempts ? "Multiple Attempts" : "Single Attempt"}
             </div>
+            {quiz.allowMultipleAttempts && (
+              <div className="text-sm text-muted">- Attempt-based scoring enabled</div>
+            )}
           </div>
         </div>
 
@@ -297,6 +346,9 @@ function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: numbe
 
           <div className="mt-4">
             <div className="text-sm text-muted">{earnedPoints} points</div>
+            {quiz.allowMultipleAttempts && (
+              <div className="mt-1 text-xs text-muted">Attempt {Math.max(1, attempt)}</div>
+            )}
             <div className="relative mt-2 h-2 w-full overflow-hidden rounded-full bg-accent">
               <div
                 className="h-full bg-emerald-500"
@@ -458,14 +510,15 @@ export function LearnerPlayerClient(props: {
         {currentEffective?.type === "quiz" ? (
           <QuizViewer
             quiz={currentEffective.quiz}
-            onCompleted={async () => {
-              setCourseCompleted(true);
+            storageKey={currentEffective.quiz ? `${courseId}:${currentEffective.quiz.id}` : undefined}
+            onCompleted={async (points) => {
               try {
-                await fetch("/api/learning/complete", {
+                const res = await fetch("/api/learning/complete", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ courseId }),
+                  body: JSON.stringify({ courseId, points }),
                 });
+                if (res.ok) setCourseCompleted(true);
               } catch {
                 // demo-only: ignore network errors
               }

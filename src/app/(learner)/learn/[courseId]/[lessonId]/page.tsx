@@ -29,6 +29,8 @@ function buildDemoQuiz(args: { courseId: string; courseTitle: string }) {
     title: `${args.courseTitle} Quiz`,
     allowMultipleAttempts: true,
     pointsPerCorrect: 5,
+    // Attempt-based scoring (MVP): 1st attempt highest, then reduced.
+    pointsPerCorrectByAttempt: [5, 4, 3, 2],
     questions: isCrm
       ? [
           {

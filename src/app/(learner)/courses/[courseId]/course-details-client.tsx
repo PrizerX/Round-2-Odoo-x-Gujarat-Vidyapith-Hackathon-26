@@ -3,12 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import * as React from "react";
-import { Search } from "lucide-react";
+import { Search, Star, X, RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/cn";
 
 export type CourseDetailsContentItem = {
@@ -17,6 +20,184 @@ export type CourseDetailsContentItem = {
   href: string;
   completed: boolean;
 };
+
+type Viewer = {
+  id: string;
+  name: string;
+};
+
+type CourseReview = {
+  id: string;
+  courseId: string;
+  userId: string;
+  userName: string;
+  rating: number; // 1..5
+  text: string;
+  createdAt: number; // epoch ms
+};
+
+const REVIEWS_STORAGE_PREFIX = "learnova_reviews_";
+
+function clampRating(v: number): number {
+  if (!Number.isFinite(v)) return 5;
+  return Math.max(1, Math.min(5, Math.round(v)));
+}
+
+function seedReviews(courseId: string): CourseReview[] {
+  const base: CourseReview[] = [
+    {
+      id: `seed_${courseId}_1`,
+      courseId,
+      userId: "u_demo_2",
+      userName: "Name of User 2",
+      rating: 5,
+      text: "Clean structure and very practical examples. The pace felt just right.",
+      createdAt: Date.now() - 1000 * 60 * 60 * 24 * 7,
+    },
+    {
+      id: `seed_${courseId}_2`,
+      courseId,
+      userId: "u_demo_3",
+      userName: "Name of User 3",
+      rating: 4,
+      text: "Great overview. Would love a couple more real-world scenarios, but overall solid.",
+      createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3,
+    },
+  ];
+
+  // Slightly personalize CRM courses.
+  if (courseId.includes("crm") || courseId === "course_4") {
+    return [
+      {
+        id: `seed_${courseId}_1`,
+        courseId,
+        userId: "u_demo_2",
+        userName: "Name of User 2",
+        rating: 5,
+        text: "The pipeline + follow-up flow made sense immediately. Super helpful for Odoo CRM.",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 6,
+      },
+      {
+        id: `seed_${courseId}_2`,
+        courseId,
+        userId: "u_demo_3",
+        userName: "Name of User 3",
+        rating: 4,
+        text: "Good explanations. The quiz at the end was a nice recap.",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
+      },
+    ];
+  }
+
+  return base;
+}
+
+function readStoredReviews(courseId: string): CourseReview[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(`${REVIEWS_STORAGE_PREFIX}${courseId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((r) => typeof r === "object" && r)
+      .map((r) => r as Partial<CourseReview>)
+      .filter((r) => r.courseId === courseId)
+      .filter((r) => typeof r.userId === "string" && typeof r.userName === "string")
+      .filter((r) => typeof r.text === "string")
+      .map((r) => ({
+        id: typeof r.id === "string" ? r.id : `stored_${courseId}_${r.userId}`,
+        courseId,
+        userId: r.userId as string,
+        userName: r.userName as string,
+        rating: clampRating(typeof r.rating === "number" ? r.rating : 5),
+        text: (r.text as string).slice(0, 1000),
+        createdAt: typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredReviews(courseId: string, reviews: CourseReview[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      `${REVIEWS_STORAGE_PREFIX}${courseId}`,
+      JSON.stringify(reviews),
+    );
+  } catch {
+    // ignore (private mode / quota)
+  }
+}
+
+function computeAverageRating(reviews: CourseReview[]): number {
+  if (!reviews.length) return 0;
+  const sum = reviews.reduce((acc, r) => acc + clampRating(r.rating), 0);
+  return Math.max(0, Math.min(5, sum / reviews.length));
+}
+
+function formatRatingNumber(v: number): string {
+  if (!Number.isFinite(v)) return "0";
+  const s = v.toFixed(1);
+  return s.endsWith(".0") ? s.slice(0, -2) : s;
+}
+
+function StarsDisplay(props: { value: number; className?: string }) {
+  const safe = Math.max(0, Math.min(5, props.value));
+  return (
+    <div
+      className={cn("inline-flex items-center gap-1", props.className)}
+      aria-label={`${formatRatingNumber(safe)} out of 5`}
+    >
+      {Array.from({ length: 5 }).map((_, i) => {
+        const start = i;
+        const frac = Math.max(0, Math.min(1, safe - start));
+        const width = `${Math.round(frac * 100)}%`;
+        return (
+          <span key={i} className="relative inline-block h-5 w-5 align-middle">
+            {/* Base: hollow stroke */}
+            <Star className="h-5 w-5 text-muted" fill="none" />
+            {/* Fill: clipped, no stroke so outlines stay aligned */}
+            <span className="absolute inset-0 overflow-hidden" style={{ width }} aria-hidden="true">
+              <Star
+                className="h-5 w-5 text-amber-500"
+                stroke="transparent"
+                fill="currentColor"
+              />
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function StarsPicker(props: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {Array.from({ length: 5 }).map((_, i) => {
+        const v = i + 1;
+        const active = v <= props.value;
+        return (
+          <button
+            key={v}
+            type="button"
+            onClick={() => props.onChange(v)}
+            className={cn(
+              "rounded p-1 transition-colors",
+              active ? "text-amber-500" : "text-muted hover:text-amber-500",
+            )}
+            aria-label={`Rate ${v} star${v === 1 ? "" : "s"}`}
+          >
+            <Star className={cn("h-5 w-5", active && "fill-current")} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function CourseDetailsClient(props: {
   courseId: string;
@@ -33,9 +214,41 @@ export function CourseDetailsClient(props: {
   accessBadges: Array<"Paid" | "Invitation" | "Signed-in only">;
   priceInr?: number;
   content: CourseDetailsContentItem[];
+  viewer?: Viewer | null;
 }) {
+  const router = useRouter();
   const [tab, setTab] = React.useState<"overview" | "reviews">("overview");
   const [query, setQuery] = React.useState("");
+  const [resetOpen, setResetOpen] = React.useState(false);
+  const [resetBusy, setResetBusy] = React.useState(false);
+
+  const [reviews, setReviews] = React.useState<CourseReview[]>(() => seedReviews(props.courseId));
+  const [reviewModalOpen, setReviewModalOpen] = React.useState(false);
+  const [draftRating, setDraftRating] = React.useState(5);
+  const [draftText, setDraftText] = React.useState("");
+
+  React.useEffect(() => {
+    const stored = readStoredReviews(props.courseId);
+    if (stored.length) {
+      // Merge stored on top of seed by userId (1 review per user).
+      const byUser = new Map<string, CourseReview>();
+      for (const r of seedReviews(props.courseId)) byUser.set(r.userId, r);
+      for (const r of stored) byUser.set(r.userId, r);
+      const merged = Array.from(byUser.values()).sort((a, b) => b.createdAt - a.createdAt);
+      setReviews(merged);
+    } else {
+      setReviews(seedReviews(props.courseId));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.courseId]);
+
+  const viewerReview = React.useMemo(() => {
+    const viewer = props.viewer;
+    if (!viewer) return null;
+    return reviews.find((r) => r.userId === viewer.id) ?? null;
+  }, [props.viewer, reviews]);
+
+  const avgRating = React.useMemo(() => computeAverageRating(reviews), [reviews]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -184,17 +397,19 @@ export function CourseDetailsClient(props: {
               </button>
             </div>
 
-            <div className="w-full sm:max-w-xs">
-              <div className="relative">
-                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search content"
-                  className="pr-9"
-                />
+            {tab === "overview" && (
+              <div className="w-full sm:max-w-xs">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                  <Input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search content"
+                    className="pr-9"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {tab === "overview" ? (
@@ -242,8 +457,170 @@ export function CourseDetailsClient(props: {
               </div>
             </div>
           ) : (
-            <div className="rounded-[12px] border border-border bg-accent p-4 text-sm text-muted">
-              Ratings and Reviews coming soon.
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-end gap-4">
+                  <div className="text-4xl font-semibold text-foreground">
+                    {avgRating ? formatRatingNumber(avgRating) : "0"}
+                  </div>
+                  <div className="space-y-1">
+                    <StarsDisplay value={avgRating || 0} />
+                    <div className="text-xs text-muted">
+                      {reviews.length} review{reviews.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                </div>
+
+                {props.viewer ? (
+                  <Button size="sm" onClick={() => {
+                    setDraftRating(viewerReview?.rating ?? 5);
+                    setDraftText(viewerReview?.text ?? "");
+                    setReviewModalOpen(true);
+                  }}>
+                    {viewerReview ? "Edit Review" : "Add Review"}
+                  </Button>
+                ) : (
+                  <Link href={`/auth/sign-in?next=${encodeURIComponent(`/courses/${props.courseId}`)}`}>
+                    <Button size="sm">Sign in to review</Button>
+                  </Link>
+                )}
+              </div>
+
+              <div className="border-t border-border" />
+
+              <div className="space-y-4">
+                {props.viewer && (
+                  <div className="grid gap-2 border-b border-border pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full border border-border bg-accent" aria-hidden="true" />
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-foreground">{props.viewer.name}</div>
+                        {viewerReview && (
+                          <div className="inline-flex items-center gap-1 text-xs font-semibold text-muted">
+                            <Star className="h-3.5 w-3.5" />
+                            <span>{formatRatingNumber(viewerReview.rating)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="w-full rounded-[14px] border-2 border-amber-400/70 bg-surface px-4 py-3 text-left text-sm text-muted hover:bg-accent"
+                      onClick={() => {
+                        setDraftRating(viewerReview?.rating ?? 5);
+                        setDraftText(viewerReview?.text ?? "");
+                        setReviewModalOpen(true);
+                      }}
+                      aria-label={viewerReview ? "Edit your review" : "Write your review"}
+                    >
+                      {viewerReview?.text?.trim()
+                        ? viewerReview.text
+                        : "Write your review...."}
+                    </button>
+                  </div>
+                )}
+
+                {reviews
+                  .filter((r) => r.userId !== (props.viewer?.id ?? ""))
+                  .map((r) => (
+                    <div key={r.id} className="grid gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full border border-border bg-accent" aria-hidden="true" />
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-foreground">{r.userName}</div>
+                          <div className="inline-flex items-center gap-1 text-xs font-semibold text-muted">
+                            <Star className="h-3.5 w-3.5" />
+                            <span>{formatRatingNumber(r.rating)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="w-full rounded-[14px] border-2 border-amber-400/70 bg-surface px-4 py-3 text-sm text-foreground">
+                        {r.text}
+                      </div>
+                    </div>
+                  ))}
+
+                {reviews.length === 0 && (
+                  <div className="rounded-[12px] border border-border bg-accent p-4 text-sm text-muted">
+                    No reviews yet.
+                  </div>
+                )}
+              </div>
+
+              <Modal
+                open={reviewModalOpen}
+                onOpenChange={(open) => setReviewModalOpen(open)}
+                className="max-w-2xl"
+              >
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setReviewModalOpen(false)}
+                    className="absolute right-0 top-0 rounded-full p-2 text-muted hover:bg-accent"
+                    aria-label="Close"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+
+                  <div className="text-lg font-semibold text-foreground">
+                    {viewerReview ? "Edit your review" : "Add a review"}
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground">Rating</div>
+                      <StarsPicker value={draftRating} onChange={setDraftRating} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground">Review</div>
+                      <textarea
+                        value={draftText}
+                        onChange={(e) => setDraftText(e.target.value)}
+                        rows={5}
+                        placeholder="Write your review..."
+                        className="w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted focus:ring-2 focus:ring-primary/20"
+                      />
+                      <div className="text-xs text-muted">Max 1000 characters.</div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="secondary" onClick={() => setReviewModalOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const viewer = props.viewer;
+                          if (!viewer) return;
+                          const text = draftText.trim();
+                          if (!text) return;
+
+                          const next: CourseReview = {
+                            id: viewerReview?.id ?? `r_${props.courseId}_${viewer.id}`,
+                            courseId: props.courseId,
+                            userId: viewer.id,
+                            userName: viewer.name,
+                            rating: clampRating(draftRating),
+                            text: text.slice(0, 1000),
+                            createdAt: Date.now(),
+                          };
+
+                          setReviews((prev) => {
+                            const withoutViewer = prev.filter((r) => r.userId !== viewer.id);
+                            const merged = [next, ...withoutViewer];
+                            writeStoredReviews(props.courseId, merged);
+                            return merged;
+                          });
+                          setReviewModalOpen(false);
+                        }}
+                        disabled={!draftText.trim()}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Modal>
             </div>
           )}
         </CardContent>
@@ -255,6 +632,60 @@ export function CourseDetailsClient(props: {
         <span className="px-2">•</span>
         <span>/public/images/courses</span>
       </div>
+
+      {/* Demo utility: reset completion + quiz attempt state for this course */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shadow-sm"
+          onClick={() => setResetOpen(true)}
+          aria-label="Reset course progress (demo)"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Reset progress
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onOpenChange={(v) => {
+          if (resetBusy) return;
+          setResetOpen(v);
+        }}
+        title="Reset progress?"
+        description="This will clear the demo completion and quiz score for this course so you can re-test scoring and sync."
+        confirmText="Reset"
+        cancelText="Cancel"
+        danger
+        busy={resetBusy}
+        onConfirm={async () => {
+          setResetBusy(true);
+          try {
+            await fetch("/api/learning/reset", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ courseId: props.courseId }),
+            });
+
+            if (typeof window !== "undefined") {
+              try {
+                const prefix = `learnova_quiz_attempt_${props.courseId}:`;
+                for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+                  const k = window.localStorage.key(i);
+                  if (k && k.startsWith(prefix)) window.localStorage.removeItem(k);
+                }
+              } catch {
+                // ignore
+              }
+            }
+
+            router.refresh();
+          } finally {
+            setResetBusy(false);
+          }
+        }}
+      />
     </div>
   );
 }

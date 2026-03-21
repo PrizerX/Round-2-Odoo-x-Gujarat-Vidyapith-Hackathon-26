@@ -108,6 +108,7 @@ export default async function LearnerCourseDetailsPage({
       accessBadges={accessBadges}
       priceInr={course.accessRule === "payment" ? course.priceInr : undefined}
       content={content}
+      viewer={session ? { id: session.user.id, name: session.user.name } : null}
     />
   );
 }

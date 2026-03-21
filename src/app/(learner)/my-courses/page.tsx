@@ -16,6 +16,7 @@ import {
   MOCK_PURCHASES,
 } from "@/lib/data/mock-learning";
 import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
+import { getTotalEarnedPoints } from "@/lib/learning/points";
 
 import { MyCoursesClient, type MyCourseCard } from "./my-courses-client";
 
@@ -32,7 +33,8 @@ export default async function MyCoursesPage() {
   if (!session) redirect("/auth/sign-in?next=/my-courses");
 
   const userId = session.user.id;
-  const points = getTotalPoints(userId);
+  const earned = await getTotalEarnedPoints();
+  const points = getTotalPoints(userId) + earned;
   const badge = getBadgeForPoints(points);
   const completedCourses = await getCompletedCourseIds();
 
