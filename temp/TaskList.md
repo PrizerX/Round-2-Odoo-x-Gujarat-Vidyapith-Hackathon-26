@@ -5,6 +5,8 @@
 - Strict UI tokens applied (Primary `#714b67`, Accent `#f3f4f6`, Base `#ffffff`).
 - All Add/Edit actions must use modals; all Delete actions must have confirmation.
 - Supabase planned for Auth + DB; currently using mock auth + mock data.
+- Publishing: only published courses are visible to learners.
+- Guests can browse (if allowed) but must sign in to start learning.
 
 ## ✅ Completed so far
 - Next.js App Router + TypeScript + Tailwind scaffolded in repo root.
@@ -21,7 +23,64 @@
 - YouTube video embeds wired for video lessons (placeholder URLs supported).
 - Proper quiz flow implemented (start → questions → results modal) with simple scoring.
 - Quiz completion marks course as 100% complete across learner pages (demo persistence via httpOnly cookie + API route).
+- Quiz points now sync into `/my-courses` + `/profile` totals (demo persistence via httpOnly cookie).
+- Demo utility: “Reset progress” button on course details clears completion + points for a course.
 - Visual polish: green progress indicators everywhere; paid price emphasized; “Enrolled” ribbon shown on catalog cards.
+
+
+## Module A — Instructor/Admin Backoffice (Architecture Checklist)
+
+### A1) Courses Dashboard (Kanban/List)
+- [x] Backoffice route skeleton exists: `/backoffice`, `/backoffice/courses`
+- [ ] Kanban view
+- [ ] List view
+- [ ] Search courses by name
+- [ ] Course card info: title, tags, views, total lessons, total duration, published badge
+- [ ] Actions: Edit, Share (generate/copy link)
+- [ ] Create course: `+` button → popup modal → enter course name
+
+### A2) Course Form (Edit Course)
+- [x] Edit route skeleton exists: `/backoffice/courses/[courseId]`
+- [ ] Header actions: Publish toggle, Preview (learner view), Add Attendees (invite), Contact Attendees, Upload image
+- [ ] Fields: Title (required), Tags, Website (required when published), Responsible/Course Admin
+- [ ] Tabs: Content / Description / Options / Quiz (4-tab layout)
+
+### A3) Lessons / Content Management
+- [ ] Lesson list (title + type)
+- [ ] 3-dot menu actions: Edit, Delete (with confirmation)
+- [ ] Add Content button opens Lesson Editor popup
+
+### A4) Lesson Editor (Add/Edit)
+- [ ] Modal with tabs: Content / Description / Additional Attachments
+- [ ] Content tab: title (required), type selector (Video/Document/Image), responsible (optional)
+- [ ] Video fields: URL + duration
+- [ ] Document fields: upload + allow download toggle
+- [ ] Image fields: upload + allow download toggle
+- [ ] Description tab: text or rich editor
+- [ ] Additional attachments: upload OR external link
+
+### A5) Course Options (Access Rules)
+- [ ] Visibility: Everyone / Signed In
+- [ ] Access rules: Open / On Invitation / On Payment (+ price)
+- [ ] Course admin selector
+
+### A6) Quizzes (Instructor Side)
+- [ ] Quizzes list per course
+- [ ] Add Quiz (modal)
+- [ ] Edit/Delete quiz (delete with confirmation)
+
+### A7) Quiz Builder
+- [ ] Left panel: question list + Add Question + Rewards
+- [ ] Question editor: question text + multiple options + mark correct answer(s)
+- [ ] Rewards system: 1st attempt → X, 2nd → Y, 3rd → Z, 4th+ → W
+
+### A8) Reporting Dashboard
+- [x] Reporting route skeleton exists: `/backoffice/reports` (placeholder cards/table)
+- [ ] Overview cards wired to real data: Total Participants / Yet to Start / In Progress / Completed
+- [ ] Table columns per architecture: Sr No, Course name, Participant, Enrolled date, Start date, Time spent, Completion %, Completed date, Status
+- [ ] Show/hide columns (column picker)
+
+---
 
 ## Module B — Learner Website/App (Architecture Checklist)
 
@@ -67,9 +126,9 @@
 - [x] Badges based on total points (dashboard + profile view)
 - [x] Course completion reflected (quiz completion marks course 100% for demo)
 - [ ] “Complete course” button/action (explicit completion outside quiz)
-- [ ] Points popup with progress to next rank (currently modal text only; no next-rank computation)
+- [ ] Points popup with progress to next rank (points are synced; popup lacks next-rank computation/UI)
 
-
+---
 
 ## Phase 1: Foundation & Routing (Hours 0-3)
 - [x] Initialize Next.js (App Router) + Tailwind CSS + Lucide Icons.
@@ -84,10 +143,11 @@
 - [x] Implement Navbar with "Courses" menu.
 
 ## Phase 2: Instructor Backoffice (Hours 3-8)
-- [ ] **Courses Dashboard:** Toggle between Kanban and List views.
-- [ ] **Course Form:** Implement the 4-tab layout (Content, Description, Options, Quiz).
-- [ ] **Lesson Editor:** Popup for Video/Doc/Image types with upload/URL fields.
-- [ ] **Quiz Builder:** Question list + Points reduction settings.
+- [ ] **Courses Dashboard:** Kanban/List toggle + search + card actions.
+- [ ] **Course Form:** Header actions + fields + 4 tabs.
+- [ ] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
+- [ ] **Lesson Editor:** video/doc/image + description + attachments.
+- [ ] **Quiz Builder:** question editor + rewards system.
 
 ## Phase 3: Learner Experience & Player (Hours 8-14)
 - [x] **My Courses Page:** Cards showing progress, tags, and dynamic buttons (Join/Start/Continue).
@@ -98,7 +158,7 @@
 
 ## Phase 4: Business Logic & Gamification (Hours 14-18)
 - [ ] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
-    - Current: learner quiz uses attempt-based reduction + persisted attempts, but no instructor-configurable rewards + no platform-wide points aggregation yet.
+    - Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice quiz rewards config + full aggregation/reporting still pending.
 - [x] **Access Guard:** Redirect users based on Visibility (Everyone/Signed In) and Access (Open/Invitation/Payment).
 - [ ] **Reporting:** Instructor table showing time spent and completion %.
 
