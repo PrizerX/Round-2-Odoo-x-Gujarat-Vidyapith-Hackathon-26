@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import * as React from "react";
-import { Search, Star, X, RotateCcw } from "lucide-react";
+import { Search, Star, X, RotateCcw, CreditCard, Wallet, Smartphone, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -222,6 +222,9 @@ export function CourseDetailsClient(props: {
   const [query, setQuery] = React.useState("");
   const [resetOpen, setResetOpen] = React.useState(false);
   const [resetBusy, setResetBusy] = React.useState(false);
+  const [paymentOpen, setPaymentOpen] = React.useState(false);
+  const [paymentMethod, setPaymentMethod] = React.useState<"card" | "upi" | "wallet">("card");
+  const [payBusy, setPayBusy] = React.useState(false);
 
   const [reviews, setReviews] = React.useState<CourseReview[]>(() => seedReviews(props.courseId));
   const [reviewModalOpen, setReviewModalOpen] = React.useState(false);
@@ -311,6 +314,8 @@ export function CourseDetailsClient(props: {
   }, [query, props.content]);
 
   const bannerSrc = props.bannerImageUrl ?? props.coverImageUrl;
+  const isPaidCta = props.cta.label === "Buy";
+  const priceLabel = typeof props.priceInr === "number" ? `₹${props.priceInr}` : "₹0";
 
   return (
     <div className="space-y-5">
@@ -375,11 +380,20 @@ export function CourseDetailsClient(props: {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Link href={props.cta.href} aria-disabled={props.cta.disabled}>
-                    <Button disabled={props.cta.disabled}>
-                      {props.cta.label === "Buy" ? "Buy Course" : props.cta.label}
+                  {isPaidCta ? (
+                    <Button
+                      disabled={props.cta.disabled}
+                      onClick={() => setPaymentOpen(true)}
+                    >
+                      Buy Course
                     </Button>
-                  </Link>
+                  ) : (
+                    <Link href={props.cta.href} aria-disabled={props.cta.disabled}>
+                      <Button disabled={props.cta.disabled}>
+                        {props.cta.label}
+                      </Button>
+                    </Link>
+                  )}
                   {props.cta.label !== "Join" && props.cta.label !== "Buy" && props.cta.label !== "Invitation Only" && (
                     <Link
                       href={`/learn/${props.courseId}/lesson_1`}
@@ -730,6 +744,187 @@ export function CourseDetailsClient(props: {
           )}
         </CardContent>
       </Card>
+
+      <Modal
+        open={paymentOpen}
+        onOpenChange={(open) => {
+          if (payBusy) return;
+          setPaymentOpen(open);
+        }}
+        className="max-w-4xl"
+      >
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPaymentOpen(false)}
+            className="absolute right-0 top-0 rounded-full p-2 text-muted hover:bg-accent"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-lg font-semibold text-foreground">Secure Checkout</div>
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              256-bit encrypted
+            </span>
+          </div>
+          <div className="mt-2 text-sm text-muted">
+            Complete your payment to unlock this course instantly.
+          </div>
+
+          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("card")}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-[12px] border px-3 py-3 text-sm font-semibold transition-colors",
+                    paymentMethod === "card"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-surface text-foreground hover:bg-accent",
+                  )}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("upi")}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-[12px] border px-3 py-3 text-sm font-semibold transition-colors",
+                    paymentMethod === "upi"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-surface text-foreground hover:bg-accent",
+                  )}
+                >
+                  <Smartphone className="h-4 w-4" />
+                  UPI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("wallet")}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-[12px] border px-3 py-3 text-sm font-semibold transition-colors",
+                    paymentMethod === "wallet"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-surface text-foreground hover:bg-accent",
+                  )}
+                >
+                  <Wallet className="h-4 w-4" />
+                  Wallets
+                </button>
+              </div>
+
+              <div className="rounded-[12px] border border-border bg-surface p-4">
+                {paymentMethod === "card" && (
+                  <div className="space-y-4">
+                    <div className="text-sm font-semibold text-foreground">Card details</div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-muted">Card number</div>
+                      <Input placeholder="1234 5678 9012 3456" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-muted">Expiry</div>
+                        <Input placeholder="MM / YY" />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-muted">CVV</div>
+                        <Input placeholder="123" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-muted">Name on card</div>
+                      <Input placeholder="Full name" />
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === "upi" && (
+                  <div className="space-y-4">
+                    <div className="text-sm font-semibold text-foreground">UPI ID</div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-muted">Enter your UPI</div>
+                      <Input placeholder="name@bank" />
+                      <div className="text-xs text-muted">
+                        Approve the request in your UPI app to complete payment.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === "wallet" && (
+                  <div className="space-y-4">
+                    <div className="text-sm font-semibold text-foreground">Choose a wallet</div>
+                    <div className="grid gap-2">
+                      {[
+                        "Paytm Wallet",
+                        "PhonePe Wallet",
+                        "Amazon Pay",
+                      ].map((label) => (
+                        <button
+                          key={label}
+                          type="button"
+                          className="flex items-center justify-between rounded-[12px] border border-border bg-accent px-3 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-accent/70"
+                        >
+                          <span>{label}</span>
+                          <span className="text-xs text-muted">Instant</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[12px] border border-dashed border-border bg-accent px-4 py-3 text-xs text-muted">
+                By continuing, you agree to Learnova Terms of Use and the cancellation policy.
+              </div>
+            </div>
+
+            <div className="rounded-[12px] border border-border bg-accent p-4">
+              <div className="text-sm font-semibold text-foreground">Order summary</div>
+              <div className="mt-3 space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">Course</span>
+                  <span className="font-semibold text-foreground">{priceLabel}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">Platform fee</span>
+                  <span className="font-semibold text-foreground">₹0</span>
+                </div>
+                <div className="border-t border-border pt-3">
+                  <div className="flex items-center justify-between text-base font-semibold">
+                    <span>Total</span>
+                    <span>{priceLabel}</span>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                className="mt-4 w-full"
+                disabled={payBusy}
+                onClick={() => {
+                  if (payBusy) return;
+                  setPayBusy(true);
+                  window.setTimeout(() => {
+                    setPayBusy(false);
+                    setPaymentOpen(false);
+                  }, 900);
+                }}
+              >
+                {payBusy ? "Processing..." : `Pay ${priceLabel}`}
+              </Button>
+
+              <div className="mt-3 text-xs text-muted">
+                You will be redirected to a secure payment provider.
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       <div className="text-xs text-muted">
         Image drop locations (later):
