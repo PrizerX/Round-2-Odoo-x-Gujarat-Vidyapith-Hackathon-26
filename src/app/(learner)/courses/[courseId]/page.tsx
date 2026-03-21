@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
 import {
   getCourseCta,
 } from "@/lib/domain/course-logic";
@@ -18,19 +19,18 @@ import { CourseDetailsClient, type CourseDetailsContentItem } from "./course-det
 function buildContentList(args: {
   courseId: string;
   lessonsInOrder: Array<{
+    dbLessonId: string;
     routeLessonId: string;
     title: string;
     unitId?: string | null;
     unitTitle?: string | null;
     unitSortOrder?: number | null;
   }>;
-  completionPercent: number;
+  visitedLessonIds: Set<string>; // db ids
+  completedLessonIds: Set<string>; // db ids
+  lockedAfterIndex: number;
 }): CourseDetailsContentItem[] {
-  const { courseId, lessonsInOrder, completionPercent } = args;
-  const safeLessonCount = Math.max(1, lessonsInOrder.length || 1);
-  const completedCount = Math.floor(
-    (Math.max(0, Math.min(100, completionPercent)) / 100) * safeLessonCount,
-  );
+  const { courseId, lessonsInOrder } = args;
 
   const items: CourseDetailsContentItem[] = [];
   for (let i = 0; i < lessonsInOrder.length; i += 1) {
@@ -41,7 +41,9 @@ function buildContentList(args: {
       id,
       title,
       href: `/learn/${courseId}/${id}`,
-      completed: i + 1 <= completedCount,
+      visited: !!lesson?.dbLessonId && args.visitedLessonIds.has(lesson.dbLessonId),
+      completed: !!lesson?.dbLessonId && args.completedLessonIds.has(lesson.dbLessonId),
+      locked: i > args.lockedAfterIndex,
       unitId: lesson?.unitId ?? null,
       unitTitle: lesson?.unitTitle ?? null,
       unitSortOrder: typeof lesson?.unitSortOrder === "number" ? lesson.unitSortOrder : null,
@@ -54,7 +56,9 @@ function buildContentList(args: {
       id: "lesson_1",
       title: "Content 1",
       href: `/learn/${courseId}/lesson_1`,
+      visited: false,
       completed: false,
+      locked: false,
     });
   }
 
@@ -113,18 +117,57 @@ export default async function LearnerCourseDetailsPage({
   });
 
   const completedCourses = await getCompletedCourseIds(session?.user.id);
-  const completionPercent = completedCourses.has(course.id)
-    ? 100
-    : (progress?.completionPercent ?? 0);
+  const courseCompletedOverride = completedCourses.has(course.id);
 
   const lessons = await getCourseLessonsForLearner({ courseId, session });
   const lessonsInOrder = lessons ?? [];
+
+  const visitedLessonIds = new Set<string>();
+  const completedLessonIds = new Set<string>();
+  if (session && lessonsInOrder.length > 0) {
+    const progressRows = (await prisma.lessonProgress.findMany({
+      where: { userId: session.user.id, lessonId: { in: lessonsInOrder.map((l) => l.dbLessonId) } },
+      select: { lessonId: true, completed: true },
+    })) as Array<{ lessonId: string; completed: boolean }>;
+
+    for (const r of progressRows) {
+      visitedLessonIds.add(r.lessonId);
+      if (r.completed) completedLessonIds.add(r.lessonId);
+    }
+  }
+
+  if (courseCompletedOverride) {
+    for (const l of lessonsInOrder) {
+      visitedLessonIds.add(l.dbLessonId);
+      completedLessonIds.add(l.dbLessonId);
+    }
+  }
+
   const lessonCount = Math.max(1, lessonsInOrder.length || course.lessonCount || 1);
-  const counts = computeCounts({ lessonCount, completionPercent });
+  const completedCount = courseCompletedOverride ? lessonCount : completedLessonIds.size;
+  const completionPercent = courseCompletedOverride
+    ? 100
+    : Math.max(0, Math.min(100, Math.floor((completedCount / Math.max(1, lessonCount)) * 100)));
+
+  const counts = {
+    lessonCount,
+    completedCount: Math.max(0, Math.min(lessonCount, completedCount)),
+    incompleteCount: Math.max(0, lessonCount - Math.max(0, Math.min(lessonCount, completedCount))),
+    completionPercent,
+  };
+
+  let lockedAfterIndex = lessonsInOrder.length - 1;
+  if (!courseCompletedOverride && lessonsInOrder.length > 0) {
+    const firstIncomplete = lessonsInOrder.findIndex((l) => !completedLessonIds.has(l.dbLessonId));
+    lockedAfterIndex = firstIncomplete >= 0 ? firstIncomplete : lessonsInOrder.length - 1;
+  }
+
   const content = buildContentList({
     courseId,
     lessonsInOrder,
-    completionPercent: counts.completionPercent,
+    visitedLessonIds,
+    completedLessonIds,
+    lockedAfterIndex,
   });
 
   const accessBadges: Array<"Paid" | "Invitation" | "Signed-in only"> = [];

@@ -4,9 +4,11 @@ import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
 import { BADGE_LEVELS, getBadgeForPoints, getNextBadge } from "@/lib/domain/gamification";
 import { getMockBasePoints } from "@/lib/data/mock-learning";
 import { getTotalEarnedPointsForUser } from "@/lib/learning/points";
+import { ProfileSettingsClient } from "./profile-settings-client";
 
 function getTotalPoints(userId: string): number {
   return getMockBasePoints(userId);
@@ -15,6 +17,28 @@ function getTotalPoints(userId: string): number {
 export default async function ProfilePage() {
   const session = await getSession();
   if (!session) redirect("/auth/sign-in?next=/profile");
+
+  const recentAttempts: Array<{
+    id: string;
+    attemptNumber: number;
+    correctCount: number;
+    totalQuestions: number;
+    pointsAwarded: number;
+    createdAt: Date;
+    course: { title: string };
+    quiz: { title: string };
+  }> = await prisma.quizAttempt.findMany({
+    where: {
+      userId: session.user.id,
+      OR: [{ totalQuestions: { gt: 0 } }, { pointsAwarded: { gt: 0 } }],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      course: { select: { title: true } },
+      quiz: { select: { title: true } },
+    },
+  });
 
   const earned = await getTotalEarnedPointsForUser(session.user.id);
   const points = getTotalPoints(session.user.id) + earned;
@@ -93,6 +117,54 @@ export default async function ProfilePage() {
                 </div>
               );
             })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <ProfileSettingsClient currentName={session.user.name} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Point History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted">
+            Recent quiz points awarded (latest first).
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-[12px] border border-border">
+            <div className="grid grid-cols-12 gap-2 border-b border-border bg-accent px-4 py-2 text-xs font-semibold text-muted">
+              <div className="col-span-4">Course / Quiz</div>
+              <div className="col-span-2">Attempt</div>
+              <div className="col-span-2">Score</div>
+              <div className="col-span-2 text-right">Points</div>
+              <div className="col-span-2 text-right">Date</div>
+            </div>
+
+            {recentAttempts.length === 0 ? (
+              <div className="px-4 py-4 text-sm text-muted">No point history yet.</div>
+            ) : (
+              <div className="divide-y divide-border">
+                {recentAttempts.map((a) => (
+                  <div key={a.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm">
+                    <div className="col-span-4">
+                      <div className="font-medium">{a.course.title}</div>
+                      <div className="text-xs text-muted">{a.quiz.title}</div>
+                    </div>
+                    <div className="col-span-2 text-muted">#{a.attemptNumber}</div>
+                    <div className="col-span-2 text-muted">
+                      {a.totalQuestions > 0 ? `${a.correctCount}/${a.totalQuestions}` : "—"}
+                    </div>
+                    <div className="col-span-2 text-right font-semibold text-emerald-700">
+                      +{a.pointsAwarded}
+                    </div>
+                    <div className="col-span-2 text-right text-xs text-muted">
+                      {a.createdAt.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

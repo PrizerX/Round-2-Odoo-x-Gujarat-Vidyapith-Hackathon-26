@@ -18,6 +18,7 @@
 - Auth pages split into `/auth/sign-in` and `/auth/sign-up` (DB-backed auth; session stored in `learnova_session` cookie).
 - Branding polish: auth pages now show the horizontal PNG logo above the form card (not inside the card header/box).
 - Role-based protection added for `/backoffice/*` (instructor/admin only).
+- Backoffice course access scoping: admin can access all courses; instructors only see/edit courses they’re responsible for / course admin of.
 - Learner navbar shows Courses + auth status (Sign in / user + Logout).
 - Learner discovery `/courses` implemented with dynamic CTA (Join/Start/Continue/Buy), now backed by SQLite (Prisma) instead of mock catalog.
 - Join-first UX: open courses require explicit Join before learning; player route is gated to prevent bypass.
@@ -33,10 +34,12 @@
 - Demo utility: “Reset progress” button on course details clears completion + points for a course (DB + cookie/localStorage) and redirects back to details.
 - Visual polish: green progress indicators everywhere; paid price emphasized; “Enrolled” ribbon shown on catalog cards.
 - Course images now support 3 distinct URLs: cover (landscape), banner (wide header), thumbnail (square). Upload UI is deferred to Module A.
-- Module A navbar updated to match mock layout (top tabs: Courses / Reporting / Setting).
+- Module A navbar updated to match mock layout (top tabs: Courses / Reporting / Settings).
 - Module A course form page layout updated to match mock layout (publish/share widget, right-side image card placeholder, 4-tab section, content table layout).
 - Module A Units/Sections added inside courses (group lessons by unit; CRUD in backoffice; learner grouping).
 - Module A Quiz tab implemented (quiz list + Add Quiz modal + quiz builder: questions/choices + correct answer + rewards by attempt).
+- Module A Reporting UI implemented with real Prisma data + overview cards, full table columns, and a show/hide column picker.
+- Backoffice Settings is admin-only; instructors see it greyed/disabled in nav and cannot open the page.
 
 ---
 
@@ -122,10 +125,10 @@ Goal: persist users (and later learning data) using a local database while **kee
     - [x] Supports MSQ (multiple correct answers) + option deletion + inline option text editing
 
 ### A8) Reporting Dashboard
-- [x] Reporting route skeleton exists: `/backoffice/reports` (placeholder cards/table)
-- [ ] Overview cards wired to real data: Total Participants / Yet to Start / In Progress / Completed
-- [ ] Table columns per architecture: Sr No, Course name, Participant, Enrolled date, Start date, Time spent, Completion %, Completed date, Status
-- [ ] Show/hide columns (column picker)
+- [x] Reporting route exists: `/backoffice/reports`
+- [x] Overview cards wired to real data: Total Participants / Yet to Start / In Progress / Completed
+- [x] Table columns per architecture: Sr No, Course name, Participant, Enrolled date, Start date, Time spent, Completion %, Completed date, Status
+- [x] Show/hide columns (column picker)
 
 ---
 
@@ -135,6 +138,8 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Navbar → Courses
 - [x] Show published courses based on Visibility (Everyone / Signed In)
 - [x] Access rules supported in UI/CTA (Open / Invitation / Payment)
+- [x] Quick search by course name/tags (instant search-as-you-type)
+- [x] Join success popup (animated tick/confetti + View Course/My Courses)
 
 ### B2) My Courses (Dashboard)
 - [x] Course cards (image placeholder, title, description, tags)
@@ -147,6 +152,8 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Progress + total lessons + completed/incomplete counts
 - [x] Lessons/content list with completion status + search
 - [x] Lesson click opens player
+- [x] Sequential lesson locking (must “Mark as complete” to unlock next)
+- [x] Lesson status icons (completed=green, visited=orange, unvisited=gray)
 
 ### B4) Ratings & Reviews
 - [x] Average rating + reviews list
@@ -161,6 +168,8 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Document viewer (PDF inline iframe when possible)
 - [x] Image viewer
 - [x] Attachments list + inline PDF viewer for PDF attachments
+- [x] “Mark as complete” button required to unlock next lessons
+- [x] Locked lessons are non-clickable in sidebar
 
 ### B6) Quiz (Learner Side)
 - [x] Intro screen (total questions, multiple attempts text, Start Quiz)
@@ -173,6 +182,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Badges based on total points (dashboard + profile view)
 - [x] Course completion reflected (quiz completion marks course 100% for demo)
 - [x] Points + completion prefer DB when signed-in (cookie fallback kept for MVP)
+- [x] Lesson-level progress persistence (visited + completed) via `/api/learning/lesson-progress`
 - [ ] “Complete course” button/action (explicit completion outside quiz)
 - [ ] Points popup with progress to next rank (points are synced; popup lacks next-rank computation/UI)
 
@@ -194,21 +204,21 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] **Courses Dashboard:** Kanban/List toggle + search + card actions.
 - [ ] **Course Form:** Header actions + fields + 4 tabs. (Attendees actions still pending)
 - [x] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
-- [ ] **Lesson Editor:** video/doc/image + description + attachments.
+- [x] **Lesson Editor:** video/doc/image + description + attachments.
 - [x] **Quiz Builder:** question editor + rewards system.
 
 ## Phase 3: Learner Experience & Player (Hours 8-14)
 - [x] **My Courses Page:** Cards showing progress, tags, and dynamic buttons (Join/Start/Continue).
 - [x] **Profile Panel:** Badge levels based on total points (Newbie to Master).
 - [x] **Full-Screen Player:** Sidebar with % completion and collapsible state.
-    - Video + Quiz implemented; Document/Image viewers still placeholders.
+    - Video + Quiz + Document/Image viewers implemented.
 - [x] **Quiz Interface:** One-question-per-page logic with "Proceed" flow + results modal.
 
 ## Phase 4: Business Logic & Gamification (Hours 14-18)
 - [ ] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
     - Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice can now configure rewards per attempt; full aggregation/reporting still pending.
 - [x] **Access Guard:** Redirect users based on Visibility (Everyone/Signed In) and Access (Open/Invitation/Payment).
-- [ ] **Reporting:** Instructor table showing time spent and completion %.
+- [x] **Reporting:** Instructor table showing time spent and completion %.
 
 ## Phase 5: Polish & Deployment (Hours 18-24)
 - [ ] Final UI Audit against SVG mockups (especially quiz spacing/typography).

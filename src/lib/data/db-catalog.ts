@@ -146,6 +146,7 @@ export async function getCourseForLearnerById(args: {
 }
 
 export type DbCourseLesson = {
+  dbLessonId: string;
   routeLessonId: string;
   title: string;
   type: "video" | "doc" | "image" | "quiz";
@@ -211,6 +212,7 @@ export async function getCourseLessonsForLearner(args: {
   return typedLessons.map((l) => {
     const unit = l.unitId ? unitById.get(l.unitId) : undefined;
     return {
+    dbLessonId: l.id,
     routeLessonId: toRouteLessonId(courseId, l.id),
     title: l.title,
     type: l.type,

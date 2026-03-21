@@ -46,7 +46,9 @@ export async function POST(req: Request) {
       views: 0,
       durationMinutes: 60,
       lessonCount: 4,
-      responsibleId: session.user.id,
+      ...(session.user.role === "instructor"
+        ? { responsibleId: session.user.id, courseAdminId: session.user.id }
+        : { courseAdminId: session.user.id }),
       tagsText: "",
       thumbnailUrl: placeholderThumb,
       coverUrl: placeholderCover,

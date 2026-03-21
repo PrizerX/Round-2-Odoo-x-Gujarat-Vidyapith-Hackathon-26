@@ -16,6 +16,10 @@ function isInstructorOrAdmin(role: string | undefined) {
   return role === "instructor" || role === "admin";
 }
 
+function isInstructor(role: string | undefined) {
+  return role === "instructor";
+}
+
 export default async function BackofficeEditCoursePage({
   params,
 }: {
@@ -51,6 +55,14 @@ export default async function BackofficeEditCoursePage({
   });
 
   if (!course) {
+    redirect("/backoffice/courses");
+  }
+
+  if (
+    isInstructor(session.user.role) &&
+    course.responsibleId !== session.user.id &&
+    course.courseAdminId !== session.user.id
+  ) {
     redirect("/backoffice/courses");
   }
 
