@@ -14,9 +14,14 @@
 - Role-based protection added for `/backoffice/*` (instructor/admin only).
 - Learner navbar shows Courses + auth status (Sign in / user + Logout).
 - Learner discovery `/courses` implemented with dynamic CTA (Join/Start/Continue/Buy).
-- Learner `/my-courses` implemented with progress cards + total points + badge.
+- Learner `/my-courses` implemented with progress cards + total points + badge (trimmed to 4 demo items).
 - Learner `/profile` implemented with badge ladder (Newbie → Master).
-- Learner player `/learn/[courseId]/[lessonId]` implemented with collapsible sidebar + lesson status icons.
+- Learner course details `/courses/[courseId]` redesigned to match raw mockup (cover + thumbnail placeholders, progress/stats card, tabs, searchable content list).
+- Learner player `/learn/[courseId]/[lessonId]` redesigned to match raw mockup (left course panel + right viewer pane).
+- YouTube video embeds wired for video lessons (placeholder URLs supported).
+- Proper quiz flow implemented (start → questions → results modal) with simple scoring.
+- Quiz completion marks course as 100% complete across learner pages (demo persistence via httpOnly cookie + API route).
+- Visual polish: green progress indicators everywhere; paid price emphasized; “Enrolled” ribbon shown on catalog cards.
 
 
 
@@ -24,7 +29,8 @@
 - [x] Initialize Next.js (App Router) + Tailwind CSS + Lucide Icons.
 - [ ] Define shared Types/Interfaces (Course, Lesson, Quiz, User, Progress).
     - [x] Course + Enrollment + CourseProgress (mock-first)
-    - [ ] Lesson + Quiz + richer User/Points types
+    - [x] Lesson + Quiz (player + quiz flow)
+    - [ ] Richer User/Points types (for real points engine + ranks)
 - [x] Setup Directory Structure:
         - `/app/(backoffice)` -> Admin/Instructor routes.
         - `/app/(learner)` -> Website/App routes.
@@ -42,14 +48,15 @@
 - [x] **Profile Panel:** Badge levels based on total points (Newbie to Master).
 - [x] **Full-Screen Player:** Sidebar with % completion and collapsible state.
     - Main viewer placeholder for Video/Doc/Quiz.
-- [ ] **Quiz Interface:** One-question-per-page logic with "Proceed" flow.
+- [x] **Quiz Interface:** One-question-per-page logic with "Proceed" flow + results modal.
 
 ## Phase 4: Business Logic & Gamification (Hours 14-18)
 - [ ] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
+    - Current: simple scoring shown in quiz; multiple attempts UI text exists, but attempt-based reduction is not implemented yet.
 - [x] **Access Guard:** Redirect users based on Visibility (Everyone/Signed In) and Access (Open/Invitation/Payment).
 - [ ] **Reporting:** Instructor table showing time spent and completion %.
 
 ## Phase 5: Polish & Deployment (Hours 18-24)
-- [ ] Final UI Audit against SVG mockups.
-- [ ] Add Framer Motion for "Points Earned" popups.
+- [ ] Final UI Audit against SVG mockups (especially quiz spacing/typography).
+- [ ] Add Framer Motion for "Points Earned" popups (optional).
 - [ ] Deploy to Vercel/Netlify.

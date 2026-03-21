@@ -24,9 +24,11 @@ import {
   MOCK_PROGRESS,
   MOCK_PURCHASES,
 } from "@/lib/data/mock-learning";
+import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
 
 export default async function LearnerCoursesPage() {
   const session = await getSession();
+  const completedCourses = await getCompletedCourseIds();
 
   const courses = MOCK_COURSES.filter((c) => canSeeCourse(c, session));
 
@@ -52,8 +54,20 @@ export default async function LearnerCoursesPage() {
             purchased,
           });
 
+          const completionPercent = completedCourses.has(course.id)
+            ? 100
+            : (progress?.completionPercent ?? null);
+
           return (
-            <Card key={course.id} className="flex flex-col">
+            <Card key={course.id} className="relative flex flex-col overflow-hidden">
+              {enrolled && (
+                <div
+                  className="pointer-events-none absolute right-0 top-0 z-10 translate-x-8 translate-y-5 rotate-45 bg-emerald-600 px-10 py-1 text-xs font-extrabold text-white shadow"
+                  aria-label="Enrolled"
+                >
+                  Enrolled
+                </div>
+              )}
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -62,12 +76,19 @@ export default async function LearnerCoursesPage() {
                       {course.lessonCount} lessons • {formatDuration(course.durationMinutes)}
                     </CardDescription>
                   </div>
-                  {course.accessRule === "payment" && (
-                    <Badge>Paid</Badge>
-                  )}
-                  {course.accessRule === "invitation" && (
-                    <Badge>Invitation</Badge>
-                  )}
+                  <div className="flex flex-col items-end gap-2">
+                    {course.accessRule === "payment" && (
+                      <>
+                        <Badge>Paid</Badge>
+                        {typeof course.priceInr === "number" && (
+                          <div className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-900">
+                            ₹{course.priceInr}
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {course.accessRule === "invitation" && <Badge>Invitation</Badge>}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="mt-auto space-y-4">
@@ -80,8 +101,8 @@ export default async function LearnerCoursesPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs text-muted">
                     {course.views.toLocaleString()} views
-                    {progress && (
-                      <span className="ml-2">• {progress.completionPercent}%</span>
+                    {completionPercent !== null && (
+                      <span className="ml-2 font-medium text-emerald-700">• {completionPercent}%</span>
                     )}
                   </div>
 
@@ -99,9 +120,6 @@ export default async function LearnerCoursesPage() {
                     </Link>
                   </div>
                 </div>
-                {course.accessRule === "payment" && course.priceInr && (
-                  <div className="text-xs text-muted">Price: ₹{course.priceInr}</div>
-                )}
                 {course.visibility === "signed_in" && (
                   <div className="text-xs text-muted">Signed-in only</div>
                 )}

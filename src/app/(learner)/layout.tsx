@@ -8,7 +8,7 @@ export default function LearnerLayout({
   return (
     <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
       <header className="bg-primary text-white">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 2xl:max-w-[1400px]">
           <Link href="/" className="text-lg font-semibold">
             Learnova
           </Link>
@@ -28,12 +28,6 @@ export default function LearnerLayout({
             >
               Profile
             </Link>
-            <Link
-              href="/backoffice/courses"
-              className="rounded-[10px] px-3 py-2 hover:bg-white/10"
-            >
-              Backoffice
-            </Link>
             <div className="ml-2">
               <AuthStatus />
             </div>
@@ -41,7 +35,7 @@ export default function LearnerLayout({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-6 2xl:max-w-[1400px]">
         {children}
       </main>
     </div>

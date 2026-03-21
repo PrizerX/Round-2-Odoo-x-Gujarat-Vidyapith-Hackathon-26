@@ -4,6 +4,11 @@ export type CourseAccessRule = "open" | "invitation" | "payment";
 export type Course = {
   id: string;
   title: string;
+  description?: string;
+  // Wide banner image used on the course details header.
+  coverImageUrl?: string;
+  // Square/portrait image used as the course thumbnail.
+  thumbnailImageUrl?: string;
   tags: string[];
   views: number;
   lessonCount: number;

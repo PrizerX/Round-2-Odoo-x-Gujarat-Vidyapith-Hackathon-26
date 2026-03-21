@@ -3,24 +3,327 @@
 import Link from "next/link";
 import * as React from "react";
 import {
-  CheckCircle2,
+  ArrowLeft,
+  X,
   ChevronLeft,
   ChevronRight,
   Circle,
+  Menu,
   PanelLeftClose,
-  PanelLeftOpen,
+  Paperclip,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/cn";
+
+export type QuizQuestion = {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+};
+
+export type QuizDefinition = {
+  id: string;
+  title: string;
+  allowMultipleAttempts: boolean;
+  pointsPerCorrect: number;
+  questions: QuizQuestion[];
+};
 
 export type PlayerLesson = {
   id: string;
   title: string;
   type: "video" | "doc" | "image" | "quiz";
   completed: boolean;
+  description?: string;
+  videoUrl?: string;
+  quiz?: QuizDefinition;
 };
+
+function lessonTypeLabel(type: PlayerLesson["type"]): string {
+  switch (type) {
+    case "video":
+      return "Video";
+    case "doc":
+      return "Document";
+    case "image":
+      return "Image";
+    case "quiz":
+      return "Quiz";
+    default:
+      return "Content";
+  }
+}
+
+function toYouTubeEmbedUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+
+    if (u.hostname === "youtu.be") {
+      const id = u.pathname.replace("/", "").trim();
+      if (!id) return null;
+      return `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1`;
+    }
+
+    if (u.hostname.endsWith("youtube.com")) {
+      if (u.pathname.startsWith("/embed/")) {
+        const id = u.pathname.split("/embed/")[1]?.split("/")[0]?.trim();
+        if (!id) return null;
+        return `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1`;
+      }
+
+      const id = u.searchParams.get("v");
+      if (!id) return null;
+      return `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function PlayerContentViewer(props: { lesson: PlayerLesson | null | undefined }) {
+  const lesson = props.lesson;
+  if (!lesson) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center rounded-[16px] border border-border bg-accent text-sm text-muted">
+        Content not available
+      </div>
+    );
+  }
+
+  if (lesson.type === "video") {
+    const url = lesson.videoUrl;
+    const yt = url ? toYouTubeEmbedUrl(url) : null;
+    if (yt) {
+      return (
+        <div className="aspect-video w-full overflow-hidden rounded-[16px] border border-border bg-black">
+          <iframe
+            className="h-full w-full"
+            src={yt}
+            title={lesson.title}
+            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-[60vh] items-center justify-center rounded-[16px] border border-border bg-accent text-sm text-muted">
+        Video link missing
+      </div>
+    );
+  }
+
+  if (lesson.type === "quiz") {
+    return <QuizViewer quiz={lesson.quiz} />;
+  }
+
+  return (
+    <div className="flex h-[60vh] items-center justify-center rounded-[16px] border border-border bg-accent text-sm text-muted">
+      {lessonTypeLabel(lesson.type)} Viewer Placeholder
+    </div>
+  );
+}
+
+function QuizViewer(props: { quiz?: QuizDefinition; onCompleted?: (points: number) => void }) {
+  const quiz = props.quiz;
+
+  const [phase, setPhase] = React.useState<"intro" | "in_progress" | "done">(
+    "intro",
+  );
+  const [index, setIndex] = React.useState(0);
+  const [answers, setAnswers] = React.useState<Record<string, number>>({});
+  const [attempt, setAttempt] = React.useState(0);
+  const [resultOpen, setResultOpen] = React.useState(false);
+  const [earnedPoints, setEarnedPoints] = React.useState(0);
+
+  const questions = quiz?.questions ?? [];
+  const total = questions.length;
+  const current = questions[index];
+
+  React.useEffect(() => {
+    // Reset when quiz changes (navigating between lessons).
+    setPhase("intro");
+    setIndex(0);
+    setAnswers({});
+    setAttempt(0);
+    setResultOpen(false);
+    setEarnedPoints(0);
+  }, [quiz?.id]);
+
+  if (!quiz || total === 0) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center rounded-[16px] border border-border bg-accent text-sm text-muted">
+        Quiz not configured
+      </div>
+    );
+  }
+
+  const selectedIndex = current ? answers[current.id] : undefined;
+  const canProceed = typeof selectedIndex === "number";
+
+  const scoreQuiz = () => {
+    let correct = 0;
+    for (const q of questions) {
+      const a = answers[q.id];
+      if (typeof a === "number" && a === q.correctIndex) correct += 1;
+    }
+
+    const raw = correct * quiz.pointsPerCorrect;
+    // Make it feel rewarding even with mistakes (matches the “earned points” vibe).
+    const points = Math.max(5, Math.min(100, raw));
+    return { correct, points };
+  };
+
+  const onStart = () => {
+    setAttempt((a) => a + 1);
+    setPhase("in_progress");
+  };
+
+  const onProceed = () => {
+    if (!canProceed) return;
+    if (index < total - 1) {
+      setIndex((v) => v + 1);
+      return;
+    }
+
+    const { points } = scoreQuiz();
+    setEarnedPoints(points);
+    setPhase("done");
+    setResultOpen(true);
+    props.onCompleted?.(points);
+  };
+
+  const onRetry = () => {
+    setIndex(0);
+    setAnswers({});
+    setPhase("intro");
+    setResultOpen(false);
+    setEarnedPoints(0);
+  };
+
+  if (phase === "intro") {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-[16px] border border-border bg-surface p-6">
+          <div className="space-y-2 text-sm">
+            <div className="text-sm text-muted">- Total Questions '{total}'</div>
+            <div className="text-sm text-muted">
+              - {quiz.allowMultipleAttempts ? "Multiple Attempts" : "Single Attempt"}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center">
+          <Button onClick={onStart}>Start Quiz</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // in_progress + done render the same question view (done just opens modal)
+  return (
+    <div className="space-y-6">
+      <div className="text-sm text-muted">Question {Math.min(total, index + 1)} of {total}</div>
+
+      <div className="rounded-[16px] border border-border bg-surface p-5">
+        <div className="text-sm font-medium text-foreground">{current?.prompt ?? "Question"}</div>
+      </div>
+
+      <div className="space-y-3">
+        {(current?.options ?? []).map((opt, i) => {
+          const selected = selectedIndex === i;
+          return (
+            <button
+              key={opt}
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3 text-left transition-colors",
+                selected ? "ring-2 ring-emerald-200" : "hover:bg-accent",
+              )}
+              onClick={() => {
+                if (!current) return;
+                setAnswers((prev) => ({ ...prev, [current.id]: i }));
+              }}
+            >
+              <span
+                className={cn(
+                  "flex h-5 w-5 items-center justify-center rounded-full border",
+                  selected ? "border-emerald-600 bg-emerald-50" : "border-muted bg-white",
+                )}
+                aria-hidden="true"
+              >
+                {selected && <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />}
+              </span>
+              <span className="text-sm text-foreground">{opt}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-center">
+        <Button onClick={onProceed} disabled={!canProceed}>
+          Proceed
+        </Button>
+      </div>
+
+      <Modal
+        open={resultOpen}
+        onOpenChange={(open) => {
+          setResultOpen(open);
+        }}
+        className="max-w-3xl"
+      >
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setResultOpen(false)}
+            className="absolute right-0 top-0 rounded-full p-2 text-muted hover:bg-accent"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          <div className="text-3xl font-semibold text-foreground">
+            Bingo! <span className="font-medium">You have earned!</span>
+          </div>
+
+          <div className="mt-4">
+            <div className="text-sm text-muted">{earnedPoints} points</div>
+            <div className="relative mt-2 h-2 w-full overflow-hidden rounded-full bg-accent">
+              <div
+                className="h-full bg-emerald-500"
+                style={{ width: `${Math.max(0, Math.min(100, (earnedPoints / 100) * 100))}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm text-muted">
+              <div>5 Points</div>
+              <div>100 Points</div>
+            </div>
+          </div>
+
+          <div className="mt-8 text-xl text-muted">Reach the next rank to gain more points.</div>
+
+          <div className="mt-8 flex items-center justify-end gap-2">
+            {quiz.allowMultipleAttempts && (
+              <Button variant="secondary" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+            <Button onClick={() => setResultOpen(false)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
 
 export function LearnerPlayerClient(props: {
   courseId: string;
@@ -32,6 +335,7 @@ export function LearnerPlayerClient(props: {
   const { courseId, courseTitle, completionPercent, lessons, currentLessonId } = props;
 
   const [collapsed, setCollapsed] = React.useState(false);
+  const [courseCompleted, setCourseCompleted] = React.useState(false);
 
   const currentIndex = Math.max(
     0,
@@ -41,14 +345,26 @@ export function LearnerPlayerClient(props: {
   const prev = currentIndex > 0 ? lessons[currentIndex - 1] : null;
   const next = currentIndex < lessons.length - 1 ? lessons[currentIndex + 1] : null;
 
+  const effectiveCompletionPercent = courseCompleted ? 100 : completionPercent;
+  const effectiveLessons = courseCompleted
+    ? lessons.map((l) => ({ ...l, completed: true }))
+    : lessons;
+
+  const currentEffective =
+    courseCompleted && current
+      ? { ...current, completed: true }
+      : current;
+
   return (
-    <div className={cn("grid gap-4", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[320px_1fr]")}> 
-      <aside className="rounded-[12px] border border-border bg-surface p-3">
-        <div className={cn("flex items-start justify-between gap-2", collapsed && "flex-col")}> 
-          <div className={cn("min-w-0", collapsed && "hidden lg:block")}> 
-            <div className="truncate text-sm font-semibold">{courseTitle}</div>
-            <div className="mt-1 text-xs text-muted">Completion: {completionPercent}%</div>
-          </div>
+    <div className={cn("grid gap-4", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[340px_1fr]")}> 
+      <aside className="rounded-[16px] border border-border bg-surface p-3">
+        <div className={cn("flex items-center justify-between gap-2", collapsed && "flex-col items-stretch")}> 
+          <Link href="/my-courses" className={cn(collapsed && "hidden lg:block")}> 
+            <Button variant="secondary" size="sm" className={cn("gap-2", collapsed && "w-full justify-center")}> 
+              <ArrowLeft className="h-4 w-4" />
+              <span className={cn(collapsed && "hidden")}>Back</span>
+            </Button>
+          </Link>
 
           <Button
             variant="secondary"
@@ -57,44 +373,73 @@ export function LearnerPlayerClient(props: {
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? (
-              <>
-                <PanelLeftOpen className="h-4 w-4" />
-                <span className="hidden lg:inline">Expand</span>
-              </>
-            ) : (
-              <>
-                <PanelLeftClose className="h-4 w-4" />
-                <span className="hidden lg:inline">Collapse</span>
-              </>
-            )}
+            {collapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </Button>
         </div>
 
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-accent">
-          <div className="h-full bg-primary" style={{ width: `${completionPercent}%` }} />
+        <div className={cn("mt-3", collapsed && "hidden lg:block")}> 
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="truncate">{courseTitle}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="text-sm text-muted">
+                <span className="font-semibold text-emerald-700">{effectiveCompletionPercent}%</span> Completed
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-accent">
+                <div className="h-full bg-emerald-500" style={{ width: `${effectiveCompletionPercent}%` }} />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className={cn("mt-4 space-y-1", collapsed && "mt-3")}> 
-          {lessons.map((lesson) => {
+        <div className={cn("mt-4 space-y-2", collapsed && "mt-3")}> 
+          {effectiveLessons.map((lesson) => {
             const active = lesson.id === currentLessonId;
+            const label = lessonTypeLabel(lesson.type);
+
             return (
               <Link
                 key={lesson.id}
                 href={`/learn/${courseId}/${lesson.id}`}
                 className={cn(
-                  "flex items-center gap-2 rounded-[10px] px-3 py-2 text-sm transition-colors",
-                  active ? "bg-accent" : "hover:bg-accent",
-                  collapsed && "justify-center px-2",
+                  "block rounded-[14px] border border-border bg-surface px-3 py-3 transition-colors",
+                  active ? "ring-2 ring-emerald-200" : "hover:bg-accent",
+                  collapsed && "px-2",
                 )}
                 title={lesson.title}
               >
-                {lesson.completed ? (
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                ) : (
-                  <Circle className="h-4 w-4 text-muted" />
+                <div className={cn("flex items-start justify-between gap-3", collapsed && "justify-center")}> 
+                  <div className={cn("min-w-0", collapsed && "hidden")}> 
+                    <div className="text-xs font-semibold text-primary">{label}</div>
+                    <div className="mt-1 line-clamp-2 text-sm font-medium text-foreground">
+                      {lesson.title}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      <span>Additional attachments</span>
+                    </div>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full border",
+                      lesson.completed
+                        ? "border-emerald-600 bg-emerald-50"
+                        : "border-muted bg-white",
+                    )}
+                    aria-label={lesson.completed ? "Completed" : "Incomplete"}
+                    title={lesson.completed ? "Completed" : "Incomplete"}
+                  >
+                    {lesson.completed ? <div className="h-3 w-3 rounded-full bg-emerald-600" /> : null}
+                  </div>
+                </div>
+
+                {collapsed && (
+                  <div className="mt-2 flex items-center justify-center text-xs font-semibold text-primary">
+                    {label}
+                  </div>
                 )}
-                <span className={cn("truncate", collapsed && "hidden")}>{lesson.title}</span>
               </Link>
             );
           })}
@@ -102,58 +447,63 @@ export function LearnerPlayerClient(props: {
       </aside>
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <Link href="/my-courses" className="text-sm font-medium text-primary hover:underline">
-            Back to My Courses
-          </Link>
-          <Link href={`/courses/${courseId}`} className="text-sm font-medium text-primary hover:underline">
-            Course details
-          </Link>
+        <div className="rounded-[16px] border border-border bg-accent p-3 text-sm text-muted">
+          {currentEffective?.description ?? "Description of the content should be visible here (set in background for the user)."}
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{current?.title ?? "Lesson"}</CardTitle>
-            <div className="text-sm text-muted">
-              Description and viewer for: <span className="text-foreground">{current?.type ?? "content"}</span>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex aspect-video items-center justify-center rounded-[12px] border border-border bg-accent text-sm text-muted">
-              {current?.type === "quiz" ? "Quiz Viewer Placeholder" : "Media Viewer Placeholder"}
-            </div>
+        <div className="text-lg font-semibold text-primary sm:text-xl">
+          {currentEffective?.title ?? "Lesson"}
+        </div>
 
-            <div className="flex items-center justify-between gap-3">
-              {prev ? (
-                <Link href={`/learn/${courseId}/${prev.id}`}>
-                  <Button variant="secondary" size="sm">
-                    <ChevronLeft className="h-4 w-4" />
-                    Back
-                  </Button>
-                </Link>
-              ) : (
-                <Button variant="secondary" size="sm" disabled>
-                  <ChevronLeft className="h-4 w-4" />
-                  Back
-                </Button>
-              )}
+        {currentEffective?.type === "quiz" ? (
+          <QuizViewer
+            quiz={currentEffective.quiz}
+            onCompleted={async () => {
+              setCourseCompleted(true);
+              try {
+                await fetch("/api/learning/complete", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ courseId }),
+                });
+              } catch {
+                // demo-only: ignore network errors
+              }
+            }}
+          />
+        ) : (
+          <PlayerContentViewer lesson={currentEffective} />
+        )}
 
-              {next ? (
-                <Link href={`/learn/${courseId}/${next.id}`}>
-                  <Button size="sm">
-                    Next Content
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              ) : (
-                <Button size="sm" disabled>
-                  Next Content
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-between gap-3">
+          {prev ? (
+            <Link href={`/learn/${courseId}/${prev.id}`}>
+              <Button variant="secondary" size="sm">
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Button>
+            </Link>
+          ) : (
+            <Button variant="secondary" size="sm" disabled>
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </Button>
+          )}
+
+          {next ? (
+            <Link href={`/learn/${courseId}/${next.id}`}>
+              <Button size="sm">
+                Next Content
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          ) : (
+            <Button size="sm" disabled>
+              Next Content
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </section>
     </div>
   );

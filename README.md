@@ -16,6 +16,65 @@ These tokens apply to all components and views:
 - Accent: #f3f4f6 (card backgrounds, page backgrounds, hover effects)
 - Base: #ffffff (main containers, inputs, modals)
 
+## Tech Stack
+
+This project is intentionally built “mock-first”: we ship UI + flows quickly with local mock data/auth, then swap the data layer for Supabase once the product behavior is validated.
+
+### Frontend framework
+
+- Next.js (App Router)
+	- Why: fast routing + layouts for the two experiences (Learner + Backoffice), and server components for auth-gated redirects without client flicker.
+	- Why: built-in API routes used for the mock auth endpoints so the prototype remains self-contained.
+
+### Language & typing
+
+- TypeScript
+	- Why: keeps domain rules (visibility/access/payment, CTA state, progress calculations) correct while iterating quickly.
+	- Why: makes it easier to migrate to a real DB later (Supabase types map cleanly to TS models).
+
+### Styling & UI system
+
+- Tailwind CSS (v4)
+	- Why: fast to iterate on strict mockup-driven layouts.
+	- Why: easy to enforce Learnova tokens globally (Primary/Accent/Base) and keep consistent spacing/borders.
+
+- Small internal UI primitives (`Button`, `Card`, `Modal`, `ConfirmDialog`, `Input`, `Badge`)
+	- Why: the GUIDE requires consistent styling and behavior (all Add/Edit via modals, all Delete via confirmations).
+	- Why: avoids heavy UI libraries for the hackathon timeline while keeping components reusable.
+
+### Icons
+
+- Lucide Icons (`lucide-react`)
+	- Why: modern, consistent icon set (explicitly recommended in the GUIDE) and easy to theme.
+
+### Auth (current prototype)
+
+- Mock, cookie-based auth session
+	- Implemented using Next.js API routes (`/api/auth/*`) and an httpOnly cookie session.
+	- Why: allows end-to-end flows (role redirects, protected Backoffice routes) without requiring external services during rapid UI development.
+	- Tradeoff: the mock signup does not persist users; it only creates a session for flow testing.
+
+### Data layer (current prototype)
+
+- In-memory/mock data modules
+	- Why: enables UI and business rules (published filtering, invitation/payment gating, progress-based CTA) to be implemented immediately.
+	- Tradeoff: data resets on refresh/restart until Supabase is added.
+
+### Planned backend (migration target)
+
+- Supabase (Auth + Postgres)
+	- Why: relational schema fits courses/lessons/quizzes/enrollments/progress/reporting.
+	- Why: Supabase Auth + Row Level Security (RLS) maps well to role-based access (learner vs instructor/admin) and invitation-only course access.
+	- Why: simplifies reporting queries (time spent, completion %, attempts) compared to a pure document store.
+
+### Quality & tooling
+
+- ESLint + `eslint-config-next`
+	- Why: catches common React/Next issues early (especially around server/client boundary).
+
+- React 19 + React Compiler plugin (bundled in the setup)
+	- Why: modern React runtime and performance defaults; keeps the prototype responsive as UI grows.
+
 ## Key modules
 
 ### Backoffice

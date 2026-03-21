@@ -1,11 +1,7 @@
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth/session";
 import {
-  formatDuration,
   getCourseCta,
   getProgress,
   hasPurchased,
@@ -17,6 +13,43 @@ import {
   MOCK_PROGRESS,
   MOCK_PURCHASES,
 } from "@/lib/data/mock-learning";
+import { getCompletedCourseIds } from "@/lib/learning/completed-courses";
+
+import { CourseDetailsClient, type CourseDetailsContentItem } from "./course-details-client";
+
+function buildContentList(args: {
+  courseId: string;
+  lessonCount: number;
+  completionPercent: number;
+}): CourseDetailsContentItem[] {
+  const { courseId, lessonCount, completionPercent } = args;
+  const safeLessonCount = Math.max(1, lessonCount || 1);
+  const completedCount = Math.floor((Math.max(0, Math.min(100, completionPercent)) / 100) * safeLessonCount);
+
+  const titles = [
+    "Advanced Sales & CRM Automation in Odoo",
+    "Odoo CRM: Advanced Features & Best Practices",
+  ];
+
+  const items: CourseDetailsContentItem[] = [];
+  for (let i = 1; i <= safeLessonCount; i += 1) {
+    items.push({
+      id: `lesson_${i}`,
+      title: titles[i - 1] ?? `Content ${i}`,
+      href: `/learn/${courseId}/lesson_${i}`,
+      completed: i <= completedCount,
+    });
+  }
+  return items;
+}
+
+function computeCounts(args: { lessonCount: number; completionPercent: number }) {
+  const lessonCount = Math.max(1, args.lessonCount || 1);
+  const completionPercent = Math.max(0, Math.min(100, args.completionPercent));
+  const completedCount = Math.floor((completionPercent / 100) * lessonCount);
+  const incompleteCount = Math.max(0, lessonCount - completedCount);
+  return { lessonCount, completedCount, incompleteCount, completionPercent };
+}
 
 export default async function LearnerCourseDetailsPage({
   params,
@@ -43,52 +76,38 @@ export default async function LearnerCourseDetailsPage({
   const purchased = hasPurchased(course.id, session, MOCK_PURCHASES);
   const cta = getCourseCta({ course, session, enrolled, progress, purchased });
 
-  return (
-    <div className="space-y-5">
-      <div className="text-xs text-muted">
-        <Link href="/courses" className="hover:underline">
-          Courses
-        </Link>
-        <span className="px-2">/</span>
-        <span className="text-foreground">{courseId}</span>
-      </div>
+  const completedCourses = await getCompletedCourseIds();
+  const completionPercent = completedCourses.has(course.id)
+    ? 100
+    : (progress?.completionPercent ?? 0);
+  const counts = computeCounts({ lessonCount: course.lessonCount, completionPercent });
+  const content = buildContentList({
+    courseId,
+    lessonCount: counts.lessonCount,
+    completionPercent: counts.completionPercent,
+  });
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <CardTitle>{course.title}</CardTitle>
-            <div className="flex items-center gap-2">
-              {!course.published && <Badge>Draft</Badge>}
-              {course.accessRule === "payment" && <Badge>Paid</Badge>}
-              {course.accessRule === "invitation" && <Badge>Invitation</Badge>}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-sm text-muted">
-            {course.lessonCount} lessons • {formatDuration(course.durationMinutes)} • {course.views.toLocaleString()} views
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {course.tags.map((t) => (
-              <Badge key={t}>{t}</Badge>
-            ))}
-          </div>
-          {progress && (
-            <div className="text-sm text-muted">Progress: {progress.completionPercent}%</div>
-          )}
-          <div className="text-sm text-muted">
-            Visibility: <span className="text-foreground">{course.visibility}</span> • Access: <span className="text-foreground">{course.accessRule}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link href={cta.href} aria-disabled={cta.disabled}>
-              <Button disabled={cta.disabled}>{cta.label}</Button>
-            </Link>
-            <Link href={`/learn/${courseId}/lesson_1`} className="text-sm font-medium text-primary">
-              Open Player
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+  const accessBadges: Array<"Paid" | "Invitation" | "Signed-in only"> = [];
+  if (course.accessRule === "payment") accessBadges.push("Paid");
+  if (course.accessRule === "invitation") accessBadges.push("Invitation");
+  if (course.visibility === "signed_in") accessBadges.push("Signed-in only");
+
+  return (
+    <CourseDetailsClient
+      courseId={courseId}
+      title={course.title}
+      description={course.description}
+      tags={course.tags}
+      coverImageUrl={course.coverImageUrl}
+      thumbnailImageUrl={course.thumbnailImageUrl}
+      lessonCount={counts.lessonCount}
+      completionPercent={counts.completionPercent}
+      completedCount={counts.completedCount}
+      incompleteCount={counts.incompleteCount}
+      cta={{ label: cta.label, href: cta.href, disabled: cta.disabled }}
+      accessBadges={accessBadges}
+      priceInr={course.accessRule === "payment" ? course.priceInr : undefined}
+      content={content}
+    />
   );
 }

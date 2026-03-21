@@ -10,5 +10,5 @@ export default async function Home() {
     redirect("/backoffice");
   }
 
-  redirect("/courses");
+  redirect("/my-courses");
 }

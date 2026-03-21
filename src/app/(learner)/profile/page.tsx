@@ -54,7 +54,7 @@ export default async function ProfilePage() {
           <div className="text-sm text-muted">Email: {session.user.email}</div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-accent">
             <div
-              className="h-full bg-primary"
+              className="h-full bg-emerald-500"
               style={{ width: `${Math.min(100, Math.max(0, (points / 120) * 100))}%` }}
             />
           </div>
