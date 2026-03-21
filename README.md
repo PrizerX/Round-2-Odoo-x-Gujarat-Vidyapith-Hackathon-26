@@ -1,3 +1,7 @@
+<p align=center>
+<img width="1770" height="388" alt="Git_banner" src="https://github.com/user-attachments/assets/d3519bb7-3226-4829-9f94-21476fd5953e" />
+</p>
+
 # Learnova
 
 Learnova is a responsive eLearning platform with two experiences: a Backoffice for instructors/admins and a Learner site/app. It is built as a rapid prototype using mock data and mock auth, with a planned migration to Supabase for authentication and storage.
