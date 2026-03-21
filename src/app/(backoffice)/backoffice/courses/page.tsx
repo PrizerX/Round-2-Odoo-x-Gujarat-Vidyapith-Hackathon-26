@@ -25,7 +25,6 @@ export default async function BackofficeCoursesPage(props: {
   const view = viewRaw === "kanban" || viewRaw === "list" ? viewRaw : "list";
 
   const rows = await prisma.course.findMany({
-    where: query ? { title: { contains: query } } : undefined,
     orderBy: [{ updatedAt: "desc" }],
     select: {
       id: true,

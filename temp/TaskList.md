@@ -74,6 +74,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Kanban view
 - [x] List view (DB-backed)
 - [x] Search courses by name
+    - [x] Instant search-as-you-type (client-side filter + debounced URL sync)
 - [x] Course card info: title, tags, views, total lessons, total duration, published badge
 - [x] Action: Edit
 - [x] Action: Preview (learner view)
@@ -96,13 +97,13 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Add Content button opens Lesson Editor popup (basic add modal)
 
 ### A4) Lesson Editor (Add/Edit)
-- [ ] Modal with tabs: Content / Description / Additional Attachments
-- [ ] Content tab: title (required), type selector (Video/Document/Image), responsible (optional)
-- [ ] Video fields: URL + duration
-- [ ] Document fields: upload + allow download toggle
-- [ ] Image fields: upload + allow download toggle
-- [ ] Description tab: text or rich editor
-- [ ] Additional attachments: upload OR external link
+- [x] Modal with tabs: Content / Description / Additional Attachments
+- [x] Content tab: title (required), type selector (Video/Document/Image), responsible (optional)
+- [x] Video fields: URL + duration
+- [x] Document fields: URL + allow download toggle
+- [x] Image fields: URL + allow download toggle
+- [x] Description tab: text
+- [x] Additional attachments: upload (PDF only) OR external link
 
 ### A5) Course Options (Access Rules)
 - [x] Visibility: Everyone / Signed In
@@ -118,7 +119,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Left panel: question list + Add Question + Rewards
 - [x] Question editor: question text + multiple options + mark correct answer(s)
 - [x] Rewards system: 1st attempt → X, 2nd → Y, 3rd → Z, 4th+ → W
-    - Note: current UI enforces a single correct option (checkbox behaves like a radio by auto-unchecking others).
+    - [x] Supports MSQ (multiple correct answers) + option deletion + inline option text editing
 
 ### A8) Reporting Dashboard
 - [x] Reporting route skeleton exists: `/backoffice/reports` (placeholder cards/table)
@@ -157,9 +158,9 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Main area: title + description strip + viewer
 - [x] Video viewer (YouTube embed)
 - [x] Quiz viewer (one question per page)
-- [ ] Document viewer (currently placeholder UI)
-- [ ] Image viewer (currently placeholder UI)
-- [ ] Attachments (currently UI hint only; no attachment data/rendering yet)
+- [x] Document viewer (PDF inline iframe when possible)
+- [x] Image viewer
+- [x] Attachments list + inline PDF viewer for PDF attachments
 
 ### B6) Quiz (Learner Side)
 - [x] Intro screen (total questions, multiple attempts text, Start Quiz)

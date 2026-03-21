@@ -21,6 +21,15 @@ function buildPlayerLessons(args: {
     type: PlayerLesson["type"];
     description: string | null;
     videoUrl: string | null;
+    allowDownload: boolean | null;
+    attachments: Array<{
+      id: string;
+      kind: "file" | "link";
+      label: string | null;
+      url: string;
+      allowDownload: boolean;
+      createdAt: Date;
+    }>;
     sortOrder: number;
     unitId: string | null;
     quiz: null | {
@@ -84,6 +93,15 @@ function buildPlayerLessons(args: {
       completed: idx + 1 <= completedCount,
       description: l.description ?? undefined,
       videoUrl: l.videoUrl ?? undefined,
+      allowDownload: !!l.allowDownload,
+      attachments: (l.attachments ?? []).map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        label: a.label ?? null,
+        url: a.url,
+        allowDownload: !!a.allowDownload,
+        createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
+      })),
       quiz,
       unitId: l.unitId ?? null,
       unitTitle: unit?.title ?? null,
@@ -188,6 +206,11 @@ export default async function LearnerPlayerPage({
       type: true,
       description: true,
       videoUrl: true,
+      allowDownload: true,
+      attachments: {
+        orderBy: [{ createdAt: "asc" }],
+        select: { id: true, kind: true, label: true, url: true, allowDownload: true, createdAt: true },
+      },
       sortOrder: true,
       unitId: true,
       quiz: {

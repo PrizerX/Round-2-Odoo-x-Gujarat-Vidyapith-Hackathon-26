@@ -14,6 +14,7 @@ type PatchLessonBody = {
   description?: string;
   videoUrl?: string;
   durationMinutes?: number;
+  allowDownload?: boolean;
 };
 
 export async function PATCH(
@@ -48,6 +49,7 @@ export async function PATCH(
     typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
       ? Math.max(0, Math.floor(body.durationMinutes))
       : undefined;
+  const allowDownload = typeof body.allowDownload === "boolean" ? body.allowDownload : undefined;
 
   try {
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -81,8 +83,12 @@ export async function PATCH(
           title: typeof title === "string" ? title : undefined,
           unitId: unitId === undefined ? undefined : unitId,
           description: typeof description === "string" ? description : undefined,
-          videoUrl: lesson.type === "video" ? (typeof videoUrl === "string" ? videoUrl : undefined) : undefined,
+          videoUrl:
+            lesson.type === "video" || lesson.type === "doc" || lesson.type === "image"
+              ? (typeof videoUrl === "string" ? videoUrl : undefined)
+              : undefined,
           durationMinutes: typeof durationMinutes === "number" ? (durationMinutes || undefined) : undefined,
+          allowDownload: typeof allowDownload === "boolean" ? allowDownload : undefined,
         },
         select: { id: true, title: true, type: true, sortOrder: true },
       });

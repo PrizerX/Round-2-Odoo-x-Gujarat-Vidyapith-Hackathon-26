@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -14,6 +15,7 @@ type CreateLessonBody = {
   description?: string;
   videoUrl?: string;
   durationMinutes?: number;
+  allowDownload?: boolean;
 };
 
 function safeLessonType(v: unknown): CreateLessonBody["type"] {
@@ -52,15 +54,16 @@ export async function POST(
   const durationMinutesRaw = typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
     ? Math.max(0, Math.floor(body.durationMinutes))
     : 0;
+  const allowDownload = typeof body.allowDownload === "boolean" ? body.allowDownload : false;
 
   if (!title) return NextResponse.json({ ok: false, error: "title is required" }, { status: 400 });
   if (!type) return NextResponse.json({ ok: false, error: "type is required" }, { status: 400 });
-  if (type === "video" && !videoUrl) {
-    return NextResponse.json({ ok: false, error: "videoUrl is required for video lessons" }, { status: 400 });
+  if ((type === "video" || type === "doc" || type === "image") && !videoUrl) {
+    return NextResponse.json({ ok: false, error: "url is required for this lesson type" }, { status: 400 });
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const course = await tx.course.findUnique({ where: { id: courseId }, select: { id: true, lessonCount: true, durationMinutes: true } });
       if (!course) throw new Error("not_found");
 
@@ -100,8 +103,9 @@ export async function POST(
           type,
           sortOrder,
           description,
-          videoUrl: type === "video" ? videoUrl : undefined,
+          videoUrl: type === "video" || type === "doc" || type === "image" ? videoUrl : undefined,
           durationMinutes: durationMinutesRaw || undefined,
+          allowDownload: !!allowDownload,
         },
         select: { id: true, title: true, type: true, sortOrder: true },
       });

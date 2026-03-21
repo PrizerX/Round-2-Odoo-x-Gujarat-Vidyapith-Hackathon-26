@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -35,7 +36,7 @@ export async function POST(
   }
 
   try {
-    const unit = await prisma.$transaction(async (tx) => {
+    const unit = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const course = await tx.course.findUnique({ where: { id: courseId }, select: { id: true } });
       if (!course) throw new Error("not_found");
 

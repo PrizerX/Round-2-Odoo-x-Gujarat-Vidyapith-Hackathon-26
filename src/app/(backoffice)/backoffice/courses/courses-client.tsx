@@ -224,15 +224,32 @@ export function BackofficeCoursesClient(props: {
   const [deleteCourseId, setDeleteCourseId] = React.useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = React.useState(false);
   const menuButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const filteredCourses = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return props.courses;
+    return props.courses.filter((c) => c.title.toLowerCase().includes(q));
+  }, [props.courses, query]);
+
+  React.useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      router.replace(buildBackofficeCoursesHref({ q: query, view }));
+    }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, view, router]);
 
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    router.push(buildBackofficeCoursesHref({ q: query, view }));
+    router.replace(buildBackofficeCoursesHref({ q: query, view }));
   };
 
   const setViewAndUrl = (nextView: DashboardView) => {
     setView(nextView);
-    router.push(buildBackofficeCoursesHref({ q: query, view: nextView }));
+    router.replace(buildBackofficeCoursesHref({ q: query, view: nextView }));
   };
 
   const onShare = async (courseId: string) => {
@@ -353,7 +370,7 @@ export function BackofficeCoursesClient(props: {
           variant="ghost"
           onClick={() => {
             setQuery("");
-            router.push(buildBackofficeCoursesHref({ q: "", view }));
+            router.replace(buildBackofficeCoursesHref({ q: "", view }));
           }}
         >
           Clear
@@ -370,9 +387,9 @@ export function BackofficeCoursesClient(props: {
         <div className="grid gap-4 lg:grid-cols-2">
           <KanbanColumn
             title="Draft"
-            count={props.courses.filter((c) => !c.published).length}
+            count={filteredCourses.filter((c) => !c.published).length}
           >
-            {props.courses
+            {filteredCourses
               .filter((c) => !c.published)
               .map((c) => (
                 <Card key={c.id} className="relative overflow-hidden">
@@ -423,9 +440,9 @@ export function BackofficeCoursesClient(props: {
 
           <KanbanColumn
             title="Published"
-            count={props.courses.filter((c) => c.published).length}
+            count={filteredCourses.filter((c) => c.published).length}
           >
-            {props.courses
+            {filteredCourses
               .filter((c) => c.published)
               .map((c) => (
                 <Card key={c.id} className="relative overflow-hidden">
@@ -487,7 +504,7 @@ export function BackofficeCoursesClient(props: {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {props.courses.map((c) => {
+          {filteredCourses.map((c) => {
             const thumb = c.thumbnailUrl || c.coverUrl || c.bannerUrl;
             const cover = thumb && !isStockCourseImageUrl(thumb) ? thumb : null;
             return (

@@ -36,6 +36,15 @@ export type QuizDefinition = {
   questions: QuizQuestion[];
 };
 
+export type LessonAttachment = {
+  id: string;
+  kind: "file" | "link";
+  label: string | null;
+  url: string;
+  allowDownload: boolean;
+  createdAt: string;
+};
+
 export type PlayerLesson = {
   id: string;
   title: string;
@@ -43,6 +52,8 @@ export type PlayerLesson = {
   completed: boolean;
   description?: string;
   videoUrl?: string;
+  allowDownload?: boolean;
+  attachments?: LessonAttachment[];
   quiz?: QuizDefinition;
   unitId?: string | null;
   unitTitle?: string | null;
@@ -92,6 +103,121 @@ function toYouTubeEmbedUrl(url: string): string | null {
   }
 }
 
+function isPdfUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  const base = u.split("?")[0]?.split("#")[0] ?? u;
+  return base.endsWith(".pdf") || u.includes("application/pdf");
+}
+
+function buildPdfEmbedUrl(url: string, allowDownload: boolean | null | undefined): string {
+  const trimmed = String(url || "").trim();
+  if (!trimmed) return trimmed;
+  if (allowDownload) return trimmed;
+
+  // Best-effort: hide the built-in PDF viewer toolbar.
+  // Note: this is a UX control only; users can still save PDFs via devtools/network.
+  const base = trimmed.split("#")[0] ?? trimmed;
+  return `${base}#toolbar=0&navpanes=0&scrollbar=0`;
+}
+
+function LessonAttachments(props: { attachments: LessonAttachment[] | null | undefined }) {
+  const attachments = props.attachments ?? [];
+  const [openPdf, setOpenPdf] = React.useState<null | { title: string; url: string; allowDownload: boolean }>(null);
+
+  if (attachments.length === 0) return null;
+
+  return (
+    <>
+      <div className="rounded-[16px] border border-border bg-background p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Paperclip className="h-4 w-4" />
+          Attachments
+        </div>
+        <div className="mt-3 space-y-2">
+          {attachments.map((a) => {
+            const title = a.label || a.url;
+            const pdf = isPdfUrl(a.url);
+            return (
+              <div key={a.id} className="flex items-center justify-between gap-3 rounded-[12px] border border-border bg-surface px-3 py-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{title}</div>
+                  <div className="truncate text-xs text-muted">{a.url}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pdf ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setOpenPdf({ title, url: a.url, allowDownload: !!a.allowDownload })}
+                    >
+                      View
+                    </Button>
+                  ) : (
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-emerald-700 underline"
+                    >
+                      Open
+                    </a>
+                  )}
+                  {a.allowDownload && (
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-emerald-700 underline"
+                    >
+                      Download
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Modal
+        open={openPdf !== null}
+        onOpenChange={(v) => {
+          if (!v) setOpenPdf(null);
+        }}
+        title={openPdf?.title ?? "Attachment"}
+        description="PDF preview"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpenPdf(null)}>
+              Close
+            </Button>
+            {openPdf?.url && openPdf?.allowDownload && (
+              <a
+                href={openPdf.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-[12px] bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+              >
+                Open in new tab
+              </a>
+            )}
+          </div>
+        }
+      >
+        {openPdf?.url ? (
+          <div className="h-[75vh] overflow-hidden rounded-[16px] border border-border bg-surface">
+            <iframe
+              className="h-full w-full"
+              src={buildPdfEmbedUrl(openPdf.url, openPdf.allowDownload)}
+              title={openPdf.title}
+            />
+          </div>
+        ) : null}
+      </Modal>
+    </>
+  );
+}
+
 function PlayerContentViewer(props: { lesson: PlayerLesson | null | undefined }) {
   const lesson = props.lesson;
   if (!lesson) {
@@ -107,15 +233,18 @@ function PlayerContentViewer(props: { lesson: PlayerLesson | null | undefined })
     const yt = url ? toYouTubeEmbedUrl(url) : null;
     if (yt) {
       return (
-        <div className="aspect-video w-full overflow-hidden rounded-[16px] border border-border bg-black">
-          <iframe
-            className="h-full w-full"
-            src={yt}
-            title={lesson.title}
-            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
+        <div className="space-y-4">
+          <div className="aspect-video w-full overflow-hidden rounded-[16px] border border-border bg-black">
+            <iframe
+              className="h-full w-full"
+              src={yt}
+              title={lesson.title}
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+          <LessonAttachments attachments={lesson.attachments} />
         </div>
       );
     }
@@ -127,8 +256,100 @@ function PlayerContentViewer(props: { lesson: PlayerLesson | null | undefined })
     );
   }
 
+  if (lesson.type === "image") {
+    const url = lesson.videoUrl;
+    if (!url) {
+      return (
+        <div className="flex h-[60vh] items-center justify-center rounded-[16px] border border-border bg-accent text-sm text-muted">
+          Image link missing
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="overflow-hidden rounded-[16px] border border-border bg-surface">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img alt={lesson.title} src={url} className="h-auto w-full object-contain" />
+        </div>
+        {lesson.allowDownload && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex text-sm text-emerald-700 underline"
+          >
+            Download image
+          </a>
+        )}
+        <LessonAttachments attachments={lesson.attachments} />
+      </div>
+    );
+  }
+
+  if (lesson.type === "doc") {
+    const url = lesson.videoUrl;
+    if (!url) {
+      return (
+        <div className="flex h-[60vh] items-center justify-center rounded-[16px] border border-border bg-accent text-sm text-muted">
+          Document link missing
+        </div>
+      );
+    }
+
+    const isPdf = isPdfUrl(url);
+    return (
+      <div className="space-y-3">
+        {isPdf ? (
+          <div className="h-[70vh] overflow-hidden rounded-[16px] border border-border bg-surface">
+            <iframe
+              className="h-full w-full"
+              src={buildPdfEmbedUrl(url, lesson.allowDownload)}
+              title={lesson.title}
+            />
+          </div>
+        ) : (
+          <div className="rounded-[16px] border border-border bg-surface p-5 text-sm">
+            <div className="text-sm font-semibold">Open document</div>
+            <div className="mt-1 break-all text-xs text-muted">{url}</div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          {(!isPdf || lesson.allowDownload) && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex text-sm text-emerald-700 underline"
+            >
+              Open in new tab
+            </a>
+          )}
+          {lesson.allowDownload && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex text-sm text-emerald-700 underline"
+            >
+              Download
+            </a>
+          )}
+        </div>
+
+        <LessonAttachments attachments={lesson.attachments} />
+      </div>
+    );
+  }
+
   if (lesson.type === "quiz") {
-    return <QuizViewer quiz={lesson.quiz} />;
+    return (
+      <div className="space-y-4">
+        <QuizViewer quiz={lesson.quiz} />
+        <LessonAttachments attachments={lesson.attachments} />
+      </div>
+    );
   }
 
   return (
@@ -375,9 +596,7 @@ function QuizViewer(props: {
           </div>
         </div>
 
-        <div className="flex items-center justify-center">
-          <Button onClick={onStart}>Start Quiz</Button>
-        </div>
+        <Button onClick={onStart}>Start Quiz</Button>
       </div>
     );
   }

@@ -57,7 +57,7 @@ export default async function BackofficeEditCoursePage({
   const lessonsRows = (await prisma.lesson.findMany({
     where: { courseId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: { id: true, unitId: true, title: true, type: true, sortOrder: true, durationMinutes: true, videoUrl: true },
+    select: { id: true, unitId: true, title: true, type: true, sortOrder: true, durationMinutes: true, videoUrl: true, description: true, allowDownload: true },
   })) as unknown as Array<{
     id: string;
     unitId: string | null;
@@ -66,6 +66,8 @@ export default async function BackofficeEditCoursePage({
     sortOrder: number;
     durationMinutes: number | null;
     videoUrl: string | null;
+    description: string | null;
+    allowDownload: boolean;
   }>;
 
   const unitsRows = await prisma.courseUnit.findMany({
@@ -154,6 +156,8 @@ export default async function BackofficeEditCoursePage({
     sortOrder: l.sortOrder,
     durationMinutes: l.durationMinutes,
     videoUrl: l.videoUrl,
+    description: l.description,
+    allowDownload: !!l.allowDownload,
   }));
 
   const units: BackofficeUnitListItem[] = unitsRowsTyped.map((u) => ({

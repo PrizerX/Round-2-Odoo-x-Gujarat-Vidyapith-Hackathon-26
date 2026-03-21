@@ -18,8 +18,19 @@ export type BackofficeLessonListItem = {
   title: string;
   type: "video" | "doc" | "image" | "quiz";
   sortOrder: number;
+  description?: string | null;
   durationMinutes?: number | null;
   videoUrl?: string | null;
+  allowDownload?: boolean;
+};
+
+type BackofficeLessonAttachmentItem = {
+  id: string;
+  kind: "file" | "link";
+  label: string | null;
+  url: string;
+  allowDownload: boolean;
+  createdAt: string;
 };
 
 export type BackofficeUnitListItem = {
@@ -202,7 +213,29 @@ export function BackofficeEditCourseClient(props: {
   const [lessonType, setLessonType] = React.useState<BackofficeLessonListItem["type"]>("video");
   const [lessonUnitId, setLessonUnitId] = React.useState<string>("");
   const [lessonVideoUrl, setLessonVideoUrl] = React.useState("https://www.youtube.com/watch?v=ysz5S6PUM-U");
+  const [lessonDocPdfFile, setLessonDocPdfFile] = React.useState<File | null>(null);
+  const lessonDocPdfInputRef = React.useRef<HTMLInputElement | null>(null);
   const [lessonDuration, setLessonDuration] = React.useState("10");
+  const [lessonDescription, setLessonDescription] = React.useState("");
+  const [lessonAllowDownload, setLessonAllowDownload] = React.useState(false);
+  const [lessonEditorTab, setLessonEditorTab] = React.useState<"content" | "description" | "attachments">("content");
+
+  React.useEffect(() => {
+    if (lessonType === "doc") return;
+    if (lessonDocPdfFile) setLessonDocPdfFile(null);
+    if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
+  }, [lessonType]);
+
+  const [lessonAttachments, setLessonAttachments] = React.useState<BackofficeLessonAttachmentItem[]>([]);
+  const [attachmentsBusy, setAttachmentsBusy] = React.useState(false);
+  const [addAttachmentOpen, setAddAttachmentOpen] = React.useState(false);
+  const [addAttachmentBusy, setAddAttachmentBusy] = React.useState(false);
+  const [attachmentLabel, setAttachmentLabel] = React.useState("");
+  const [attachmentUrl, setAttachmentUrl] = React.useState("");
+  const [attachmentPdfFile, setAttachmentPdfFile] = React.useState<File | null>(null);
+  const [attachmentAllowDownload, setAttachmentAllowDownload] = React.useState(false);
+  const [deleteAttachmentId, setDeleteAttachmentId] = React.useState<string | null>(null);
+  const attachmentPdfInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const [unitOpen, setUnitOpen] = React.useState(false);
   const [unitBusy, setUnitBusy] = React.useState(false);
@@ -273,6 +306,11 @@ export function BackofficeEditCourseClient(props: {
   const [addChoiceOpen, setAddChoiceOpen] = React.useState(false);
   const [addChoiceBusy, setAddChoiceBusy] = React.useState(false);
   const [newChoiceText, setNewChoiceText] = React.useState("");
+
+  const [editChoiceOpen, setEditChoiceOpen] = React.useState(false);
+  const [editChoiceBusy, setEditChoiceBusy] = React.useState(false);
+  const [editChoiceId, setEditChoiceId] = React.useState<string | null>(null);
+  const [editChoiceText, setEditChoiceText] = React.useState("");
 
   const [questionPromptDraft, setQuestionPromptDraft] = React.useState("");
   React.useEffect(() => {
@@ -422,9 +460,53 @@ export function BackofficeEditCourseClient(props: {
       return;
     }
 
+    const url = lessonVideoUrl.trim();
+    const fileFromInput = lessonDocPdfInputRef.current?.files?.[0] ?? null;
+    const docFile = fileFromInput ?? lessonDocPdfFile;
+    const hasDocFile = !!docFile;
+
+    if ((lessonType === "video" || lessonType === "image") && !url) {
+      setError("URL is required for this lesson type.");
+      return;
+    }
+    if (lessonType === "doc" && !url && !hasDocFile) {
+      setError("Document URL is required (or upload a PDF).");
+      return;
+    }
+
+    const uploadDocPdfIfNeeded = async (): Promise<string | null> => {
+      if (lessonType !== "doc") return null;
+      if (!docFile) return null;
+      const name = typeof docFile.name === "string" ? docFile.name : "";
+      const looksPdf = docFile.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+      if (!looksPdf) {
+        setError("Only PDF files are allowed for Document lessons.");
+        return null;
+      }
+
+      const fd = new FormData();
+      fd.append("file", docFile);
+      const res = await fetch("/api/backoffice/uploads/pdf", { method: "POST", body: fd });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok || typeof data?.url !== "string" || !String(data.url).trim()) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to upload PDF.");
+        return null;
+      }
+      return String(data.url).trim();
+    };
+
     setAddBusy(true);
     setError(null);
     try {
+      const uploadedDocUrl = await uploadDocPdfIfNeeded();
+      if (hasDocFile && !uploadedDocUrl) return;
+
+      const finalUrl = lessonType === "doc" && uploadedDocUrl ? uploadedDocUrl : url;
+      if ((lessonType === "video" || lessonType === "doc" || lessonType === "image") && !finalUrl) {
+        setError("URL is required for this lesson type.");
+        return;
+      }
+
       const res = await fetch(
         `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/lessons`,
         {
@@ -434,7 +516,12 @@ export function BackofficeEditCourseClient(props: {
             title: safeTitle,
             type: lessonType,
             unitId: lessonUnitId.trim() ? lessonUnitId.trim() : null,
-            videoUrl: lessonType === "video" ? lessonVideoUrl.trim() : undefined,
+            description: lessonDescription.trim(),
+            allowDownload: !!lessonAllowDownload,
+            videoUrl:
+              lessonType === "video" || lessonType === "doc" || lessonType === "image"
+                ? finalUrl
+                : undefined,
             durationMinutes: Number(lessonDuration),
           }),
         },
@@ -449,6 +536,11 @@ export function BackofficeEditCourseClient(props: {
       setAddOpen(false);
       setLessonTitle("");
       setLessonUnitId("");
+      setLessonDescription("");
+      setLessonAllowDownload(false);
+      setLessonEditorTab("content");
+      setLessonDocPdfFile(null);
+      if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
       router.refresh();
     } finally {
       setAddBusy(false);
@@ -462,7 +554,13 @@ export function BackofficeEditCourseClient(props: {
     setLessonType("video");
     setLessonUnitId("");
     setLessonVideoUrl("https://www.youtube.com/watch?v=ysz5S6PUM-U");
+    setLessonDocPdfFile(null);
+    if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
     setLessonDuration("10");
+    setLessonDescription("");
+    setLessonAllowDownload(false);
+    setLessonEditorTab("content");
+    setLessonAttachments([]);
     setAddOpen(true);
   };
 
@@ -475,16 +573,22 @@ export function BackofficeEditCourseClient(props: {
     setLessonTitle(lesson.title);
     setLessonType(lesson.type);
     setLessonUnitId(lesson.unitId ?? "");
-    setLessonVideoUrl(
-      lesson.type === "video" && typeof lesson.videoUrl === "string" && lesson.videoUrl.trim()
-        ? lesson.videoUrl
-        : "https://www.youtube.com/watch?v=ysz5S6PUM-U",
-    );
+    setLessonVideoUrl(typeof lesson.videoUrl === "string" && lesson.videoUrl.trim()
+      ? lesson.videoUrl
+      : lesson.type === "video"
+        ? "https://www.youtube.com/watch?v=ysz5S6PUM-U"
+        : "");
+    setLessonDocPdfFile(null);
+    if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
     setLessonDuration(
       typeof lesson.durationMinutes === "number" && Number.isFinite(lesson.durationMinutes)
         ? String(Math.max(0, Math.floor(lesson.durationMinutes)))
         : "10",
     );
+    setLessonDescription(typeof lesson.description === "string" ? lesson.description : "");
+    setLessonAllowDownload(!!lesson.allowDownload);
+    setLessonEditorTab("content");
+    setLessonAttachments([]);
     setAddOpen(true);
   };
 
@@ -500,9 +604,52 @@ export function BackofficeEditCourseClient(props: {
     const durationNum = Number(lessonDuration);
     const durationMinutes = Number.isFinite(durationNum) ? Math.max(0, Math.floor(durationNum)) : 0;
 
+    const url = lessonVideoUrl.trim();
+    const fileFromInput = lessonDocPdfInputRef.current?.files?.[0] ?? null;
+    const docFile = fileFromInput ?? lessonDocPdfFile;
+    const hasDocFile = !!docFile;
+
+    if ((lessonType === "video" || lessonType === "image") && !url) {
+      setError("URL is required for this lesson type.");
+      return;
+    }
+    if (lessonType === "doc" && !url && !hasDocFile) {
+      setError("Document URL is required (or upload a PDF).");
+      return;
+    }
+
+    const uploadDocPdfIfNeeded = async (): Promise<string | null> => {
+      if (lessonType !== "doc") return null;
+      if (!docFile) return null;
+      const name = typeof docFile.name === "string" ? docFile.name : "";
+      const looksPdf = docFile.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+      if (!looksPdf) {
+        setError("Only PDF files are allowed for Document lessons.");
+        return null;
+      }
+      const fd = new FormData();
+      fd.append("file", docFile);
+      const res = await fetch("/api/backoffice/uploads/pdf", { method: "POST", body: fd });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok || typeof data?.url !== "string" || !String(data.url).trim()) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to upload PDF.");
+        return null;
+      }
+      return String(data.url).trim();
+    };
+
     setAddBusy(true);
     setError(null);
     try {
+      const uploadedDocUrl = await uploadDocPdfIfNeeded();
+      if (hasDocFile && !uploadedDocUrl) return;
+
+      const finalUrl = lessonType === "doc" && uploadedDocUrl ? uploadedDocUrl : url;
+      if ((lessonType === "video" || lessonType === "doc" || lessonType === "image") && !finalUrl) {
+        setError("URL is required for this lesson type.");
+        return;
+      }
+
       const res = await fetch(
         `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/lessons/${encodeURIComponent(editLessonId)}`,
         {
@@ -511,7 +658,12 @@ export function BackofficeEditCourseClient(props: {
           body: JSON.stringify({
             title: safeTitle,
             unitId: lessonUnitId.trim() ? lessonUnitId.trim() : null,
-            videoUrl: lessonType === "video" ? lessonVideoUrl.trim() : undefined,
+            description: lessonDescription.trim(),
+            allowDownload: !!lessonAllowDownload,
+            videoUrl:
+              lessonType === "video" || lessonType === "doc" || lessonType === "image"
+                ? finalUrl
+                : undefined,
             durationMinutes,
           }),
         },
@@ -526,11 +678,153 @@ export function BackofficeEditCourseClient(props: {
       setAddOpen(false);
       setEditLessonId(null);
       setLessonUnitId("");
+      setLessonDescription("");
+      setLessonAllowDownload(false);
+      setLessonEditorTab("content");
+      setLessonAttachments([]);
+      setLessonDocPdfFile(null);
+      if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
       router.refresh();
     } finally {
       setAddBusy(false);
     }
   };
+
+  const loadLessonAttachments = async () => {
+    if (!editLessonId) return;
+    setAttachmentsBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/lessons/${encodeURIComponent(editLessonId)}/attachments`,
+      );
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok || !Array.isArray(data?.attachments)) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to load attachments.");
+        setLessonAttachments([]);
+        return;
+      }
+      setLessonAttachments(data.attachments as BackofficeLessonAttachmentItem[]);
+    } finally {
+      setAttachmentsBusy(false);
+    }
+  };
+
+  const addAttachment = async () => {
+    if (!editLessonId) return;
+    const label = attachmentLabel.trim().slice(0, 120);
+
+    const fileFromInput = attachmentPdfInputRef.current?.files?.[0] ?? null;
+    const file = fileFromInput ?? attachmentPdfFile;
+    const hasFile = !!file;
+    const url = attachmentUrl.trim().slice(0, 500);
+
+    if (!hasFile && !url) {
+      setError("Attachment URL is required (or upload a PDF). ");
+      return;
+    }
+
+    const uploadPdfIfNeeded = async (): Promise<string | null> => {
+      if (!file) return null;
+      const name = typeof file.name === "string" ? file.name : "";
+      const looksPdf = file.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+      if (!looksPdf) {
+        setError("Only PDF files are allowed.");
+        return null;
+      }
+
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await fetch("/api/backoffice/uploads/pdf", { method: "POST", body: fd });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok || typeof data?.url !== "string") {
+        setError(typeof data?.error === "string" ? data.error : "Failed to upload PDF.");
+        return null;
+      }
+      const uploaded = String(data.url || "").trim();
+      if (!uploaded) {
+        setError("Failed to upload PDF.");
+        return null;
+      }
+      return uploaded;
+    };
+
+    setAddAttachmentBusy(true);
+    setError(null);
+    try {
+      const uploadedUrl = await uploadPdfIfNeeded();
+      if (hasFile && !uploadedUrl) {
+        // Do not attempt the DB create if upload failed.
+        return;
+      }
+
+      const finalKind = hasFile ? "file" : "link";
+      const finalUrl = hasFile ? (uploadedUrl as string) : url;
+      if (!finalUrl) {
+        setError("Attachment URL is required.");
+        return;
+      }
+
+      const res = await fetch(
+        `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/lessons/${encodeURIComponent(editLessonId)}/attachments`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            kind: finalKind,
+            url: finalUrl,
+            label: label || undefined,
+            allowDownload: !!attachmentAllowDownload,
+          }),
+        },
+      );
+
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to add attachment.");
+        return;
+      }
+
+      setAddAttachmentOpen(false);
+      setAttachmentLabel("");
+      setAttachmentUrl("");
+      setAttachmentPdfFile(null);
+      if (attachmentPdfInputRef.current) attachmentPdfInputRef.current.value = "";
+      setAttachmentAllowDownload(false);
+      await loadLessonAttachments();
+    } finally {
+      setAddAttachmentBusy(false);
+    }
+  };
+
+  const deleteAttachment = async (attachmentId: string) => {
+    if (!editLessonId) return;
+    setAttachmentsBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/lessons/${encodeURIComponent(editLessonId)}/attachments/${encodeURIComponent(attachmentId)}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to delete attachment.");
+        return;
+      }
+      await loadLessonAttachments();
+    } finally {
+      setAttachmentsBusy(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!addOpen) return;
+    if (!isEditing) return;
+    if (lessonEditorTab !== "attachments") return;
+    void loadLessonAttachments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addOpen, isEditing, lessonEditorTab, editLessonId]);
 
   const deleteLesson = async (lessonId: string) => {
     setBusy(true);
@@ -864,6 +1158,48 @@ export function BackofficeEditCourseClient(props: {
       router.refresh();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openEditChoice = (opt: BackofficeQuizOptionItem) => {
+    setError(null);
+    setEditChoiceId(opt.id);
+    setEditChoiceText(opt.text);
+    setEditChoiceOpen(true);
+  };
+
+  const saveChoiceText = async () => {
+    if (!selectedQuiz || !selectedQuestion || !editChoiceId) return;
+    const safeText = editChoiceText.trim().slice(0, 200);
+    if (!safeText) {
+      setError("Choice text is required.");
+      return;
+    }
+
+    setEditChoiceBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/quizzes/${encodeURIComponent(selectedQuiz.id)}/questions/${encodeURIComponent(selectedQuestion.id)}/options/${encodeURIComponent(editChoiceId)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: safeText }),
+        },
+      );
+
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to update choice.");
+        return;
+      }
+
+      setEditChoiceOpen(false);
+      setEditChoiceId(null);
+      setEditChoiceText("");
+      router.refresh();
+    } finally {
+      setEditChoiceBusy(false);
     }
   };
 
@@ -1234,7 +1570,7 @@ export function BackofficeEditCourseClient(props: {
                                   id="price"
                                   value={priceInr}
                                   onChange={(e) => setPriceInr(e.target.value)}
-                                  placeholder="500"
+                                  placeholder="₹500"
                                   className="h-9 w-28"
                                 />
                               </div>
@@ -1509,7 +1845,18 @@ export function BackofficeEditCourseClient(props: {
                                             .sort((a, b) => a.sortOrder - b.sortOrder)
                                             .map((opt) => (
                                               <div key={opt.id} className="grid grid-cols-[1fr_120px_44px] items-center gap-3">
-                                                <div className="text-sm">{opt.text}</div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <div className="min-w-0 truncate text-sm">{opt.text}</div>
+                                                  <button
+                                                    type="button"
+                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-background text-muted hover:bg-accent"
+                                                    title="Edit choice"
+                                                    disabled={busy}
+                                                    onClick={() => openEditChoice(opt)}
+                                                  >
+                                                    <Pencil className="h-4 w-4" />
+                                                  </button>
+                                                </div>
                                                 <div className="flex items-center justify-start">
                                                   {selectedQuestion.allowMultipleCorrect ? (
                                                     <input
@@ -1673,7 +2020,13 @@ export function BackofficeEditCourseClient(props: {
             setLessonType("video");
             setLessonUnitId("");
             setLessonVideoUrl("https://www.youtube.com/watch?v=ysz5S6PUM-U");
+            setLessonDocPdfFile(null);
+            if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
             setLessonDuration("10");
+            setLessonDescription("");
+            setLessonAllowDownload(false);
+            setLessonEditorTab("content");
+            setLessonAttachments([]);
           }
         }}
         title={isEditing ? "Edit content" : "Add content"}
@@ -1693,74 +2046,311 @@ export function BackofficeEditCourseClient(props: {
           </div>
         }
       >
-        <div className="space-y-3">
-          <div className="grid gap-2">
-            <Label htmlFor="lessonTitle">Title</Label>
-            <Input
-              id="lessonTitle"
-              value={lessonTitle}
-              onChange={(e) => setLessonTitle(e.target.value)}
-              placeholder="Lesson title"
-            />
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { key: "content", label: "Content" },
+              { key: "description", label: "Description" },
+              { key: "attachments", label: "Additional Attachments" },
+            ] as const).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setLessonEditorTab(t.key)}
+                className={
+                  lessonEditorTab === t.key
+                    ? "rounded-[12px] border border-border bg-accent px-4 py-2 text-sm font-semibold"
+                    : "rounded-[12px] border border-border bg-background px-4 py-2 text-sm text-muted hover:bg-accent"
+                }
+                aria-current={lessonEditorTab === t.key ? "page" : undefined}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="lessonUnit">Unit (optional)</Label>
-            <select
-              id="lessonUnit"
-              className="h-10 w-full rounded-[10px] border border-border bg-background px-3 text-sm"
-              value={lessonUnitId}
-              onChange={(e) => setLessonUnitId(e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {props.units
-                .slice()
-                .sort((a, b) => a.sortOrder - b.sortOrder)
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.title}
-                  </option>
-                ))}
-            </select>
-          </div>
+          {lessonEditorTab === "content" && (
+            <div className="space-y-3">
+              <div className="grid gap-2">
+                <Label htmlFor="lessonTitle">Title</Label>
+                <Input
+                  id="lessonTitle"
+                  value={lessonTitle}
+                  onChange={(e) => setLessonTitle(e.target.value)}
+                  placeholder="Lesson title"
+                />
+              </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="lessonType">Type</Label>
-            <select
-              id="lessonType"
-              className="h-10 w-full rounded-[10px] border border-border bg-background px-3 text-sm"
-              value={lessonType}
-              onChange={(e) => setLessonType(e.target.value as any)}
-              disabled={isEditing}
-            >
-              <option value="video">Video</option>
-              <option value="doc">Document</option>
-              <option value="image">Image</option>
-              <option value="quiz">Quiz</option>
-            </select>
-          </div>
+              <div className="grid gap-2">
+                <Label htmlFor="lessonUnit">Unit (optional)</Label>
+                <select
+                  id="lessonUnit"
+                  className="h-10 w-full rounded-[10px] border border-border bg-background px-3 text-sm"
+                  value={lessonUnitId}
+                  onChange={(e) => setLessonUnitId(e.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {props.units
+                    .slice()
+                    .sort((a, b) => a.sortOrder - b.sortOrder)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
 
-          {lessonType === "video" && (
-            <div className="grid gap-2">
-              <Label htmlFor="videoUrl">YouTube URL</Label>
-              <Input
-                id="videoUrl"
-                value={lessonVideoUrl}
-                onChange={(e) => setLessonVideoUrl(e.target.value)}
+              <div className="grid gap-2">
+                <Label htmlFor="lessonType">Type</Label>
+                <select
+                  id="lessonType"
+                  className="h-10 w-full rounded-[10px] border border-border bg-background px-3 text-sm"
+                  value={lessonType}
+                  onChange={(e) => setLessonType(e.target.value as any)}
+                  disabled={isEditing}
+                >
+                  <option value="video">Video</option>
+                  <option value="doc">Document</option>
+                  <option value="image">Image</option>
+                  <option value="quiz">Quiz</option>
+                </select>
+              </div>
+
+              {(lessonType === "video" || lessonType === "doc" || lessonType === "image") && (
+                <div className="grid gap-2">
+                  <Label htmlFor="contentUrl">
+                    {lessonType === "video" ? "YouTube URL" : lessonType === "doc" ? "Document URL" : "Image URL"}
+                  </Label>
+                  <Input
+                    id="contentUrl"
+                    value={lessonVideoUrl}
+                    onChange={(e) => setLessonVideoUrl(e.target.value)}
+                    placeholder={lessonType === "video" ? "https://www.youtube.com/watch?v=..." : "https://..."}
+                  />
+                </div>
+              )}
+
+              {lessonType === "doc" && (
+                <div className="rounded-[12px] border border-border bg-accent p-3">
+                  <div className="text-sm font-semibold">Upload PDF (recommended)</div>
+                  <div className="mt-1 text-xs text-muted">If you select a PDF, the URL field is ignored.</div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      ref={lessonDocPdfInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="hidden"
+                      disabled={addBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setLessonDocPdfFile(f);
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={addBusy}
+                      onClick={() => lessonDocPdfInputRef.current?.click()}
+                    >
+                      Choose PDF
+                    </Button>
+                    <div className="min-w-0 truncate text-sm font-semibold text-foreground">
+                      {lessonDocPdfFile ? lessonDocPdfFile.name : "No file chosen"}
+                    </div>
+                    {lessonDocPdfFile && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={addBusy}
+                        onClick={() => {
+                          setLessonDocPdfFile(null);
+                          if (lessonDocPdfInputRef.current) lessonDocPdfInputRef.current.value = "";
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-2">
+                <Label htmlFor="duration">Duration (minutes)</Label>
+                <Input
+                  id="duration"
+                  value={lessonDuration}
+                  onChange={(e) => setLessonDuration(e.target.value)}
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={lessonAllowDownload}
+                  onChange={(e) => setLessonAllowDownload(!!e.target.checked)}
+                />
+                Allow download
+              </label>
+            </div>
+          )}
+
+          {lessonEditorTab === "description" && (
+            <div className="space-y-2">
+              <Label htmlFor="lessonDescription">Description</Label>
+              <textarea
+                id="lessonDescription"
+                className="min-h-28 w-full rounded-[12px] border border-border bg-background px-3 py-2 text-sm"
+                value={lessonDescription}
+                onChange={(e) => setLessonDescription(e.target.value)}
+                placeholder="Describe what learners will get from this lesson"
               />
             </div>
           )}
 
-          <div className="grid gap-2">
-            <Label htmlFor="duration">Duration (minutes)</Label>
-            <Input
-              id="duration"
-              value={lessonDuration}
-              onChange={(e) => setLessonDuration(e.target.value)}
-            />
-          </div>
+          {lessonEditorTab === "attachments" && (
+            <div className="space-y-3">
+              {!isEditing ? (
+                <div className="rounded-[12px] border border-border bg-accent p-3 text-sm text-muted">
+                  Save the lesson first to add attachments.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold">Attachments</div>
+                      <div className="text-xs text-muted">Add external links or upload a PDF.</div>
+                    </div>
+                    <Button variant="secondary" onClick={() => setAddAttachmentOpen(true)} disabled={attachmentsBusy}>
+                      Add attachment
+                    </Button>
+                  </div>
+
+                  {attachmentsBusy ? (
+                    <div className="text-sm text-muted">Loading...</div>
+                  ) : lessonAttachments.length === 0 ? (
+                    <div className="rounded-[12px] border border-border bg-accent p-3 text-sm text-muted">
+                      No attachments yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {lessonAttachments.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-3 rounded-[12px] border border-border bg-background px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{a.label || a.url}</div>
+                            <div className="truncate text-xs text-muted">{a.url}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-background text-muted hover:bg-accent"
+                            title="Delete attachment"
+                            onClick={() => setDeleteAttachmentId(a.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </Modal>
+
+      <Modal
+        open={addAttachmentOpen}
+        onOpenChange={(v: boolean) => {
+          if (addAttachmentBusy) return;
+          setAddAttachmentOpen(v);
+          if (!v) {
+            setAttachmentLabel("");
+            setAttachmentUrl("");
+            setAttachmentPdfFile(null);
+            if (attachmentPdfInputRef.current) attachmentPdfInputRef.current.value = "";
+            setAttachmentAllowDownload(false);
+          }
+        }}
+        title="Add attachment"
+        description="Add an external link or upload a PDF as an attachment."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" disabled={addAttachmentBusy} onClick={() => setAddAttachmentOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" disabled={addAttachmentBusy} onClick={addAttachment}>
+              {addAttachmentBusy ? "Working..." : "Add"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="grid gap-2">
+            <Label htmlFor="attLabel">Label (optional)</Label>
+            <Input id="attLabel" value={attachmentLabel} onChange={(e) => setAttachmentLabel(e.target.value)} placeholder="e.g., Slides" />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="attUrl">URL</Label>
+            <Input id="attUrl" value={attachmentUrl} onChange={(e) => setAttachmentUrl(e.target.value)} placeholder="https://..." />
+          </div>
+
+          <div className="rounded-[12px] border border-border bg-accent p-3">
+            <div className="text-sm font-semibold">Upload PDF (optional)</div>
+            <div className="mt-1 text-xs text-muted">If you select a PDF, the URL field is ignored.</div>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                ref={attachmentPdfInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                disabled={addAttachmentBusy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setAttachmentPdfFile(f);
+                }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={addAttachmentBusy}
+                onClick={() => attachmentPdfInputRef.current?.click()}
+              >
+                Choose PDF
+              </Button>
+              <div className="min-w-0 truncate text-sm font-semibold text-foreground">
+                {attachmentPdfFile ? attachmentPdfFile.name : "No file chosen"}
+              </div>
+              {attachmentPdfFile && (
+                <Button type="button" variant="ghost" disabled={addAttachmentBusy} onClick={() => setAttachmentPdfFile(null)}>
+                  Remove
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={attachmentAllowDownload} onChange={(e) => setAttachmentAllowDownload(!!e.target.checked)} />
+            Allow download
+          </label>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteAttachmentId !== null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteAttachmentId(null);
+        }}
+        title="Delete attachment?"
+        description="This will permanently remove the attachment."
+        confirmText="Delete"
+        danger
+        onConfirm={async () => {
+          if (!deleteAttachmentId) return;
+          await deleteAttachment(deleteAttachmentId);
+          setDeleteAttachmentId(null);
+        }}
+      />
 
       <Modal
         open={addQuizOpen}
@@ -1858,6 +2448,40 @@ export function BackofficeEditCourseClient(props: {
             id="choiceText"
             value={newChoiceText}
             onChange={(e) => setNewChoiceText(e.target.value)}
+            placeholder="Answer option"
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={editChoiceOpen}
+        onOpenChange={(v: boolean) => {
+          if (editChoiceBusy) return;
+          setEditChoiceOpen(v);
+          if (!v) {
+            setEditChoiceId(null);
+            setEditChoiceText("");
+          }
+        }}
+        title="Edit choice"
+        description="Update the text for this choice."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" disabled={editChoiceBusy} onClick={() => setEditChoiceOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" disabled={editChoiceBusy} onClick={saveChoiceText}>
+              {editChoiceBusy ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-2">
+          <Label htmlFor="editChoiceText">Choice text</Label>
+          <Input
+            id="editChoiceText"
+            value={editChoiceText}
+            onChange={(e) => setEditChoiceText(e.target.value)}
             placeholder="Answer option"
           />
         </div>
