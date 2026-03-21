@@ -59,9 +59,11 @@ In progress:
 
 The app uses a mock, cookie-based auth flow for rapid prototyping. These credentials are intentionally not shown inside the UI.
 
-- Learner: learner@learnova.dev / Password123!
-- Instructor: instructor@learnova.dev / Password123!
-- Admin: admin@learnova.dev / Password123!
+- Learner: learner@learnova.dev / Learner@123
+- Instructor: instructor@learnova.dev / Instructor@123
+- Admin: admin@learnova.dev / Admin@123
+
+Note: Sign up creates a session for flow testing, but does not persist users yet (Supabase will replace this).
 
 ## Local development
 

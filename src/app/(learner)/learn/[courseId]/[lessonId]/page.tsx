@@ -1,6 +1,48 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSession } from "@/lib/auth/session";
+import {
+  canSeeCourse,
+  getProgress,
+  hasPurchased,
+  isEnrolled,
+} from "@/lib/domain/course-logic";
+import {
+  MOCK_COURSES,
+  MOCK_ENROLLMENTS,
+  MOCK_PROGRESS,
+  MOCK_PURCHASES,
+} from "@/lib/data/mock-learning";
+
+import { LearnerPlayerClient, type PlayerLesson } from "./player-client";
+
+function parseLessonNumber(lessonId: string): number {
+  const m = /^lesson_(\d+)$/.exec(lessonId);
+  if (!m) return 1;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function buildLessons(args: {
+  lessonCount: number;
+  completionPercent: number;
+}): PlayerLesson[] {
+  const { lessonCount, completionPercent } = args;
+  const completedCount = Math.floor((Math.max(0, Math.min(100, completionPercent)) / 100) * lessonCount);
+
+  const lessons: PlayerLesson[] = [];
+  for (let i = 1; i <= lessonCount; i += 1) {
+    const type: PlayerLesson["type"] =
+      i === lessonCount ? "quiz" : i % 2 === 0 ? "doc" : "video";
+    lessons.push({
+      id: `lesson_${i}`,
+      title: `Lesson ${i}`,
+      type,
+      completed: i <= completedCount,
+    });
+  }
+  return lessons;
+}
 
 export default async function LearnerPlayerPage({
   params,
@@ -8,51 +50,52 @@ export default async function LearnerPlayerPage({
   params: Promise<{ courseId: string; lessonId: string }>;
 }) {
   const { courseId, lessonId } = await params;
+  const session = await getSession();
+
+  if (!session) {
+    redirect(
+      `/auth/sign-in?next=${encodeURIComponent(`/learn/${courseId}/${lessonId}`)}`,
+    );
+  }
+
+  const course = MOCK_COURSES.find((c) => c.id === courseId);
+  if (!course) redirect("/courses");
+
+  // Visibility & access guard (prototype).
+  if (!canSeeCourse(course, session)) redirect("/courses");
+
+  const enrolled = isEnrolled(courseId, session, MOCK_ENROLLMENTS);
+  const purchased = hasPurchased(courseId, session, MOCK_PURCHASES);
+
+  if (course.accessRule === "invitation" && !enrolled) {
+    redirect(`/courses/${courseId}`);
+  }
+  if (course.accessRule === "payment" && !purchased) {
+    redirect(`/courses/${courseId}`);
+  }
+
+  const progress = getProgress(courseId, session, MOCK_PROGRESS);
+  const completionPercent = progress?.completionPercent ?? 0;
+
+  const lessons = buildLessons({
+    lessonCount: Math.max(1, course.lessonCount || 1),
+    completionPercent,
+  });
+
+  const lessonNumber = parseLessonNumber(lessonId);
+  const boundedLessonId = `lesson_${Math.min(Math.max(1, lessonNumber), lessons.length)}`;
+
+  if (boundedLessonId !== lessonId) {
+    redirect(`/learn/${courseId}/${boundedLessonId}`);
+  }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-      <aside className="rounded-[12px] border border-border bg-surface p-4">
-        <div className="text-sm font-semibold">{courseId}</div>
-        <div className="mt-1 text-xs text-muted">Completion: 0%</div>
-        <div className="mt-4 text-sm text-muted">Lessons (collapsible next)</div>
-        <div className="mt-2 space-y-1 text-sm">
-          <div className="rounded-[10px] bg-accent px-3 py-2">{lessonId}</div>
-          <div className="rounded-[10px] px-3 py-2 hover:bg-accent">lesson_2</div>
-        </div>
-      </aside>
-
-      <section className="space-y-4">
-        <div className="text-xs text-muted">
-          <Link href="/courses" className="hover:underline">
-            Back to Courses
-          </Link>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Lesson Player</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="text-sm text-muted">
-              Top lesson description, then media viewer (Video/Doc/Image/Quiz).
-            </div>
-            <div className="flex aspect-video items-center justify-center rounded-[12px] border border-border bg-accent text-sm text-muted">
-              Media Viewer Placeholder
-            </div>
-            <div className="flex items-center justify-between">
-              <Link href="/courses" className="text-sm font-medium text-primary">
-                Back
-              </Link>
-              <Link
-                href={`/learn/${courseId}/lesson_2`}
-                className="text-sm font-medium text-primary"
-              >
-                Next Content
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-    </div>
+    <LearnerPlayerClient
+      courseId={courseId}
+      courseTitle={course.title}
+      completionPercent={completionPercent}
+      lessons={lessons}
+      currentLessonId={boundedLessonId}
+    />
   );
 }

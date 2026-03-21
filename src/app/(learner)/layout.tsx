@@ -17,6 +17,18 @@ export default function LearnerLayout({
               Courses
             </Link>
             <Link
+              href="/my-courses"
+              className="rounded-[10px] px-3 py-2 hover:bg-white/10"
+            >
+              My Courses
+            </Link>
+            <Link
+              href="/profile"
+              className="rounded-[10px] px-3 py-2 hover:bg-white/10"
+            >
+              Profile
+            </Link>
+            <Link
               href="/backoffice/courses"
               className="rounded-[10px] px-3 py-2 hover:bg-white/10"
             >
