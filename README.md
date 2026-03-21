@@ -142,6 +142,77 @@ Open http://localhost:3000.
 - src/components/ui for shared UI primitives.
 - src/lib for auth, domain logic, and mock data.
 
+Folder structure (excluding `temp/`, build outputs, and dependencies):
+
+```text
+.
+├─ public/
+│  └─ images/
+├─ src/
+│  ├─ app/
+│  │  ├─ (learner)/
+│  │  │  ├─ courses/
+│  │  │  │  ├─ [courseId]/
+│  │  │  │  │  ├─ course-details-client.tsx
+│  │  │  │  │  └─ page.tsx
+│  │  │  │  └─ page.tsx
+│  │  │  ├─ learn/
+│  │  │  │  └─ [courseId]/
+│  │  │  │     └─ [lessonId]/
+│  │  │  │        ├─ page.tsx
+│  │  │  │        └─ player-client.tsx
+│  │  │  ├─ my-courses/
+│  │  │  │  ├─ my-courses-client.tsx
+│  │  │  │  └─ page.tsx
+│  │  │  ├─ profile/
+│  │  │  │  └─ page.tsx
+│  │  │  └─ layout.tsx
+│  │  ├─ (backoffice)/
+│  │  │  ├─ backoffice/
+│  │  │  │  ├─ courses/
+│  │  │  │  │  ├─ [courseId]/
+│  │  │  │  │  │  └─ page.tsx
+│  │  │  │  │  └─ page.tsx
+│  │  │  │  ├─ reports/
+│  │  │  │  │  └─ page.tsx
+│  │  │  │  └─ page.tsx
+│  │  │  ├─ courses/
+│  │  │  │  └─ [courseId]/
+│  │  │  ├─ reports/
+│  │  │  └─ layout.tsx
+│  │  ├─ api/
+│  │  │  ├─ auth/
+│  │  │  │  ├─ login/route.ts
+│  │  │  │  ├─ logout/route.ts
+│  │  │  │  ├─ me/route.ts
+│  │  │  │  └─ signup/route.ts
+│  │  │  └─ learning/
+│  │  │     ├─ complete/route.ts
+│  │  │     └─ reset/route.ts
+│  │  ├─ auth/
+│  │  │  ├─ sign-in/
+│  │  │  │  ├─ page.tsx
+│  │  │  │  └─ sign-in-client.tsx
+│  │  │  ├─ sign-up/
+│  │  │  │  ├─ page.tsx
+│  │  │  │  └─ sign-up-client.tsx
+│  │  │  └─ page.tsx
+│  │  ├─ favicon.ico
+│  │  ├─ globals.css
+│  │  ├─ layout.tsx
+│  │  └─ page.tsx
+│  ├─ components/
+│  │  ├─ auth/
+│  │  └─ ui/
+│  └─ lib/
+│     ├─ auth/
+│     ├─ data/
+│     ├─ domain/
+│     └─ learning/
+├─ package.json
+└─ README.md
+```
+
 ## Roadmap (short)
 
 - Implement course types, lesson types, and quiz models.
