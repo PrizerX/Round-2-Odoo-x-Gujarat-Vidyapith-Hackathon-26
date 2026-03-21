@@ -6,9 +6,6 @@
 
 Learnova is a responsive eLearning platform with two experiences: a Backoffice for instructors/admins and a Learner site/app. It’s built for the Learnova 24h hackathon with **local auth + local SQLite database (Prisma)**, so it runs end-to-end without external services.
 
-<p align=center>
-<img width="700" alt="image" src="https://github.com/user-attachments/assets/51a456e6-87d0-4d58-af24-5913e1697996" />
-</p>
 
 
 ## Product overview
@@ -24,6 +21,17 @@ These tokens apply to all components and views:
 - Primary: #714b67 (headers, sidebars, primary buttons, active states)
 - Accent: #f3f4f6 (card backgrounds, page backgrounds, hover effects)
 - Base: #ffffff (main containers, inputs, modals)
+
+
+
+<p align=center>
+	<img width="600" alt="image" src="https://github.com/user-attachments/assets/8df5d358-0567-404d-a4fb-26a861301c50" />
+	<img width="800" alt="image" src="https://github.com/user-attachments/assets/e1351568-faf1-416f-b81d-c4e1842d7447" />
+	<img width="800 alt="image" src="https://github.com/user-attachments/assets/8b7d52bd-5a23-4b7e-99ee-5aec219b8be3" />
+	<img width="800" alt="image" src="https://github.com/user-attachments/assets/59ac9bd6-c8b4-45ef-ab35-564376db1d02" />
+
+</p>
+
 
 ## Tech Stack
 
