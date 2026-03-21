@@ -29,19 +29,26 @@ export function SignInClient({ next }: { next?: string }) {
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-xl items-center px-6 py-10">
-        <Card className="w-full">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[12px] border border-border bg-surface">
-                <Image src="/logo-placeholder.svg" alt="Learnova logo" width={34} height={34} />
-              </div>
+        <div className="w-full">
+          <div className="mb-5 flex justify-center">
+            <Image
+              src="/images/LN_Horiz.png"
+              alt="Learnova"
+              width={260}
+              height={56}
+              priority
+              className="h-10 w-auto"
+            />
+          </div>
+
+          <Card className="w-full">
+            <CardHeader>
               <div>
                 <CardTitle>Sign in</CardTitle>
                 <div className="text-sm text-muted">Continue to Learnova</div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </CardHeader>
+            <CardContent className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -109,8 +116,9 @@ export function SignInClient({ next }: { next?: string }) {
                 Sign up
               </Link>
             </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <ConfirmDialog

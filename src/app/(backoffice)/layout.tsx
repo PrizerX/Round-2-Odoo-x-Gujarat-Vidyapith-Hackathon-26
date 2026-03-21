@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import Image from "next/image";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { getSession } from "@/lib/auth/session";
@@ -17,7 +18,16 @@ export default async function BackofficeLayout({
     <div className="flex min-h-[100dvh] bg-background text-foreground">
       <aside className="w-64 shrink-0 bg-primary text-white">
         <div className="px-5 py-4 border-b border-white/15">
-          <div className="text-lg font-semibold">Learnova</div>
+          <Link href="/backoffice" className="flex items-center" aria-label="Backoffice home">
+            <Image
+              src="/images/LN_Horiz_white.png"
+              alt="Learnova"
+              width={180}
+              height={40}
+              priority
+              className="h-7 w-auto"
+            />
+          </Link>
           <div className="text-xs opacity-80">Backoffice</div>
         </div>
         <div className="px-5 py-3 border-b border-white/15">
