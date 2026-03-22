@@ -43,6 +43,37 @@ type CourseReview = {
 
 const REVIEWS_STORAGE_PREFIX = "learnova_reviews_";
 
+const COURSE_GRADIENTS: Array<[string, string]> = [
+  ["#fb7185", "#f97316"],
+  ["#f97316", "#facc15"],
+  ["#22c55e", "#06b6d4"],
+  ["#06b6d4", "#3b82f6"],
+  ["#3b82f6", "#8b5cf6"],
+  ["#8b5cf6", "#ec4899"],
+  ["#10b981", "#84cc16"],
+  ["#ef4444", "#f59e0b"],
+];
+
+function hashToIndex(value: string, mod: number): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % mod;
+}
+
+function courseGradientStyle(courseId: string): React.CSSProperties {
+  const idx = hashToIndex(courseId, COURSE_GRADIENTS.length);
+  const [a, b] = COURSE_GRADIENTS[idx]!;
+  return { backgroundImage: `linear-gradient(135deg, ${a}, ${b})` };
+}
+
+function isStockCourseImageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.includes("/images/courses/") || url.includes("\\images\\courses\\");
+}
+
 function clampRating(v: number): number {
   if (!Number.isFinite(v)) return 5;
   return Math.max(1, Math.min(5, Math.round(v)));
@@ -359,7 +390,8 @@ export function CourseDetailsClient(props: {
     return { units, unassigned };
   }, [props.content, query]);
 
-  const bannerSrc = props.bannerImageUrl ?? props.coverImageUrl;
+  const rawBannerSrc = props.bannerImageUrl ?? props.coverImageUrl;
+  const bannerSrc = rawBannerSrc && !isStockCourseImageUrl(rawBannerSrc) ? rawBannerSrc : null;
   const isPaidCta = props.cta.label === "Buy";
   const priceLabel = typeof props.priceInr === "number" ? `₹${props.priceInr}` : "₹0";
 
@@ -384,8 +416,8 @@ export function CourseDetailsClient(props: {
               priority
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm text-muted">
-              Banner Image
+            <div className="h-full w-full" style={courseGradientStyle(props.courseId)}>
+              <div className="h-full w-full bg-black/10" />
             </div>
           )}
         </div>
@@ -394,7 +426,7 @@ export function CourseDetailsClient(props: {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex gap-4">
               <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[12px] border border-border bg-accent sm:h-28 sm:w-28">
-                {props.thumbnailImageUrl ? (
+                {props.thumbnailImageUrl && !isStockCourseImageUrl(props.thumbnailImageUrl) ? (
                   <Image
                     src={props.thumbnailImageUrl}
                     alt={`${props.title} thumbnail`}
@@ -402,8 +434,8 @@ export function CourseDetailsClient(props: {
                     className="object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-muted">
-                    Course Image
+                  <div className="h-full w-full" style={courseGradientStyle(props.courseId)}>
+                    <div className="h-full w-full bg-black/10" />
                   </div>
                 )}
               </div>
