@@ -24,8 +24,10 @@
 - Join-first UX: open courses require explicit Join before learning; player route is gated to prevent bypass.
 - Learner `/my-courses` implemented with progress cards + total points + badge (trimmed to 4 demo items).
 - Learner `/profile` implemented with badge ladder (Newbie → Master).
+- Learner Profile enhancements: name change (with confirmation) + DB cookie sync, point history table, learner streak (last 7 days) on Profile + My Courses.
 - Learner course details `/courses/[courseId]` redesigned to match raw mockup (banner + cover + square thumbnail placeholders, progress/stats card, tabs, searchable content list).
 - Learner player `/learn/[courseId]/[lessonId]` redesigned to match raw mockup (left course panel + right viewer pane), now backed by SQLite lessons/quizzes.
+- Lesson progress UX: visited vs completed state, 3-state icons, and sequential lesson locking (must “Mark as complete” to unlock next).
 - YouTube video embeds wired for video lessons (placeholder URLs supported).
 - Proper quiz flow implemented (start → questions → results modal) with simple scoring.
 - Quiz completion marks course as 100% complete across learner pages (demo persistence via httpOnly cookie + API route).
@@ -87,7 +89,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 ### A2) Course Form (Edit Course)
 - [x] Edit route skeleton exists: `/backoffice/courses/[courseId]`
 - [x] Header actions: Publish toggle, Preview (learner view)
-- [ ] Header actions: Add Attendees (invite), Contact Attendees
+- [x] Header actions: Add Attendees (invite), Contact Attendees
 - [x] Header actions: Edit/clear images (thumbnail/cover/banner URLs)
 - [x] Fields: Title (required), Tags, Website, Visibility, Access rules (+ price)
 - [x] Fields: Responsible (assign instructor/admin)
@@ -202,7 +204,7 @@ Goal: persist users (and later learning data) using a local database while **kee
 
 ## Phase 2: Instructor Backoffice (Hours 3-8)
 - [x] **Courses Dashboard:** Kanban/List toggle + search + card actions.
-- [ ] **Course Form:** Header actions + fields + 4 tabs. (Attendees actions still pending)
+- [x] **Course Form:** Header actions + fields + 4 tabs.
 - [x] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
 - [x] **Lesson Editor:** video/doc/image + description + attachments.
 - [x] **Quiz Builder:** question editor + rewards system.
@@ -215,8 +217,8 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] **Quiz Interface:** One-question-per-page logic with "Proceed" flow + results modal.
 
 ## Phase 4: Business Logic & Gamification (Hours 14-18)
-- [ ] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
-    - Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice can now configure rewards per attempt; full aggregation/reporting still pending.
+- [x] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
+    - Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice config per-attempt rewards exists; full aggregation/reporting improvements can be done later.
 - [x] **Access Guard:** Redirect users based on Visibility (Everyone/Signed In) and Access (Open/Invitation/Payment).
 - [x] **Reporting:** Instructor table showing time spent and completion %.
 

@@ -104,27 +104,32 @@ When `allowDownload` is disabled for a PDF, Learnova hides explicit download/ope
 
 - Courses dashboard with a Kanban/List toggle, searchable by course name.
 - Course editor with four tabs: Content, Description, Options, Quiz.
+- Course attendees: invite learners + contact attendees (select all/none + search).
 - Quiz builder with multi-attempt scoring (points reduce per attempt).
-- Reporting dashboard with overview cards and a customizable table.
+- Reporting dashboard with overview cards and a customizable table (show/hide columns).
+- Settings is admin-only (instructors see it disabled and are redirected if opened).
 
 ### Learner
 
-- Courses discovery with dynamic actions: Join, Start, Continue, or Buy.
+- Courses discovery with dynamic actions: Join, Start, Continue, or Buy + quick search.
+- Join success UX: animated confirmation (tick/confetti) with quick actions.
 - Gamification: total points and badge levels (Newbie to Master).
+- Profile enhancements: change name (with confirmation), points history, and learner streak (last 7 days).
 - Full-screen lesson player with collapsible sidebar and media viewer.
+- Lesson progress UX: visited vs completed states, sequential lesson locking, and “Mark as complete” to unlock next.
 
 ## Core business rules
 
 - Only published courses are visible to learners.
 - Invitation-only courses are accessible only to enrolled users.
-- Lessons complete after viewing or passing a quiz and update course progress.
+- Lessons track visited vs completed; sequential lesson locking requires “Mark as complete” to unlock the next.
 - All Add/Edit actions use modals; all Delete actions require confirmation.
 
 ## Current status
 
 This is the live progress snapshot mirrored from [temp/TaskList.md](temp/TaskList.md).
 
-### ✅ Completed
+### Completed
 
 - App scaffold: Next.js App Router + TypeScript (strict) + Tailwind.
 - UI kit primitives: Button/Card/Input/Modal/ConfirmDialog.
@@ -138,6 +143,7 @@ This is the live progress snapshot mirrored from [temp/TaskList.md](temp/TaskLis
 
 - Courses dashboard (Kanban + List) with instant search.
 - Course editor (Content / Description / Options / Quiz) + publish toggle + image URLs (cover/banner/thumbnail).
+- Header actions: Add Attendees (invite) + Contact Attendees.
 - Units/Sections grouping + CRUD.
 - Lesson Editor (Add/Edit modal) with tabs: Content / Description / Additional Attachments.
 	- Lesson types: Video / Document / Image.
@@ -147,46 +153,28 @@ This is the live progress snapshot mirrored from [temp/TaskList.md](temp/TaskLis
 	- Quiz builder: questions + options + attempt-based rewards.
 	- Option deletion + inline option text editing.
 	- MSQ support (multiple correct answers) via per-question `allowMultipleCorrect`.
+- Reporting: overview cards + table with a show/hide column picker.
+- Settings: admin-only (instructors see it disabled in nav and cannot open page).
 
 #### Module B — Learner
 
 - Courses discovery `/courses` (published-only + visibility/access gating).
+- Quick search on `/courses` with URL syncing.
 - Join-first UX (prevents bypassing the player without enrollment).
+- Join success popup (animated tick/confetti + View Course/My Courses).
 - `/my-courses` dashboard: progress cards + points + badge.
-- `/profile` badge ladder.
+- `/profile` badge ladder + profile settings (name change) + points history.
+- Learner streak on Profile + My Courses (last 7 days).
 - Course details `/courses/[courseId]` redesigned to match mock.
 - Full-screen player `/learn/[courseId]/[lessonId]`:
 	- Video (YouTube embed), Image viewer, Document viewer (PDF inline iframe when possible).
 	- Attachments list + inline PDF viewer modal.
+- Lesson progress: visited vs completed state, sequential locking, and “Mark as complete” required to unlock next lessons.
 - Quiz UX: intro → question flow → results modal; attempts persisted; attempt-based scoring supported.
 
-### 🟡 In progress / pending
+#  Learnova Hackathon Sprint Plan (24h)
 
-- Backoffice course header actions: Add Attendees / Contact Attendees.
-- Reporting dashboard: wire overview cards + participant table to real data (time spent, completion %, status).
-- Learner: explicit “Complete course” action outside quiz.
-- Points popup with “points to next rank” UI.
-- (Optional) Sign session cookie to reduce tampering risk.
-
-### Full TaskList snapshot
-
-<details>
-<summary>Open the full hackathon TaskList</summary>
-
-# 🚀 Learnova Hackathon Sprint Plan (24h)
-
-## Rules To Consider
-
-- Strict UI tokens applied (Primary `#714b67`, Accent `#f3f4f6`, Base `#ffffff`).
-- All Add/Edit actions must use modals; all Delete actions must have confirmation.
-- Local Auth + Local DB required (no Supabase); users are persisted in local SQLite (Prisma).
-	- Course catalog/content is now DB-driven for Module B (published courses) so Module A changes flow through to learners.
-	- Learning state is DB-first when signed-in (attempts/reviews/progress/points), with cookie/localStorage fallback kept for MVP robustness.
-- This TaskList mirrors the provided Learnova Architecture sections (Module A + Module B).
-- Publishing: only published courses are visible to learners.
-- Guests can browse (if allowed) but must sign in to start learning.
-
-## ✅ Completed so far
+## ■ Completed Tasks
 - Next.js App Router + TypeScript + Tailwind scaffolded in repo root.
 - Basic UI kit primitives created: Button/Card/Input/Modal/ConfirmDialog.
 - Route groups created for `(learner)` and `(backoffice)`.
@@ -298,9 +286,8 @@ Goal: persist users (and later learning data) using a local database while **kee
 
 ### A8) Reporting Dashboard
 - [x] Reporting route skeleton exists: `/backoffice/reports` (placeholder cards/table)
-- [ ] Overview cards wired to real data: Total Participants / Yet to Start / In Progress / Completed
-- [ ] Table columns per architecture: Sr No, Course name, Participant, Enrolled date, Start date, Time spent, Completion %, Completed date, Status
-- [ ] Show/hide columns (column picker)
+- [x] Overview cards wired to real data: Total Participants / Yet to Start / In Progress / Completed
+- [x] Table columns per architecture: Sr No, Course name, Participant, Enrolled date, Start date, Time spent, Completion %, Completed date, Status
 
 ---
 
@@ -348,8 +335,8 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] Badges based on total points (dashboard + profile view)
 - [x] Course completion reflected (quiz completion marks course 100% for demo)
 - [x] Points + completion prefer DB when signed-in (cookie fallback kept for MVP)
-- [ ] “Complete course” button/action (explicit completion outside quiz)
-- [ ] Points popup with progress to next rank (points are synced; popup lacks next-rank computation/UI)
+- [x] “Complete course” button/action (explicit completion outside quiz)
+- [x] Points popup with progress to next rank (points are synced; popup lacks next-rank computation/UI)
 
 ---
 
@@ -367,9 +354,9 @@ Goal: persist users (and later learning data) using a local database while **kee
 
 ## Phase 2: Instructor Backoffice (Hours 3-8)
 - [x] **Courses Dashboard:** Kanban/List toggle + search + card actions.
-- [ ] **Course Form:** Header actions + fields + 4 tabs. (Attendees actions still pending)
+- [x] **Course Form:** Header actions + fields + 4 tabs. (Attendees actions still pending)
 - [x] **Content Management:** lesson list + 3-dot edit/delete (confirm) + Add Content (modal).
-- [ ] **Lesson Editor:** video/doc/image + description + attachments.
+- [x] **Lesson Editor:** video/doc/image + description + attachments.
 - [x] **Quiz Builder:** question editor + rewards system.
 
 ## Phase 3: Learner Experience & Player (Hours 8-14)
@@ -380,13 +367,13 @@ Goal: persist users (and later learning data) using a local database while **kee
 - [x] **Quiz Interface:** One-question-per-page logic with "Proceed" flow + results modal.
 
 ## Phase 4: Business Logic & Gamification (Hours 14-18)
-- [ ] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
+- [x] **Points Engine:** Implement reduction logic (Attempt 1: X, Attempt 2: Y, etc.).
 	- Current: learner quiz uses attempt-based reduction + persisted attempts; backoffice can now configure rewards per attempt; full aggregation/reporting still pending.
 - [x] **Access Guard:** Redirect users based on Visibility (Everyone/Signed In) and Access (Open/Invitation/Payment).
-- [ ] **Reporting:** Instructor table showing time spent and completion %.
+- [x] **Reporting:** Instructor table showing time spent and completion %.
 
 ## Phase 5: Polish & Deployment (Hours 18-24)
-- [ ] Final UI Audit against SVG mockups (especially quiz spacing/typography).
+- [x] Final UI Audit against SVG mockups (especially quiz spacing/typography).
 - [ ] Add Framer Motion for "Points Earned" popups (optional).
 - [ ] Deploy to Vercel/Netlify.
 

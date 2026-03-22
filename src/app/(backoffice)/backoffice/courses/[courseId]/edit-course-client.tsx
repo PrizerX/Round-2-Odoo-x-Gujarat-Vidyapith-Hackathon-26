@@ -11,6 +11,20 @@ import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ChevronDown, ChevronUp, MoreVertical, Pencil, Trash2 } from "lucide-react";
 
+type BackofficeAttendeeItem = {
+  enrollmentId: string;
+  userId: string;
+  status: "invited" | "enrolled";
+  createdAt: string;
+  user: { id: string; name: string; email: string; role: string };
+};
+
+type BackofficeEligibleUserItem = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type BackofficeLessonListItem = {
   id: string;
   routeLessonId: string;
@@ -195,6 +209,112 @@ export function BackofficeEditCourseClient(props: {
 
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [inviteBusy, setInviteBusy] = React.useState(false);
+  const [inviteError, setInviteError] = React.useState<string | null>(null);
+  const [inviteQuery, setInviteQuery] = React.useState("");
+  const [eligibleUsers, setEligibleUsers] = React.useState<BackofficeEligibleUserItem[]>([]);
+  const [eligibleBusy, setEligibleBusy] = React.useState(false);
+  const [selectedInviteIds, setSelectedInviteIds] = React.useState<string[]>([]);
+
+  const [contactOpen, setContactOpen] = React.useState(false);
+  const [contactBusy, setContactBusy] = React.useState(false);
+  const [contactError, setContactError] = React.useState<string | null>(null);
+  const [attendees, setAttendees] = React.useState<BackofficeAttendeeItem[]>([]);
+  const [contactQuery, setContactQuery] = React.useState("");
+  const [contactIncludeInvited, setContactIncludeInvited] = React.useState(false);
+  const [selectedContactIds, setSelectedContactIds] = React.useState<string[]>([]);
+  const [contactSubject, setContactSubject] = React.useState("");
+  const [contactBody, setContactBody] = React.useState("");
+
+  const fetchEligibleUsers = React.useCallback(
+    async (query: string) => {
+      const q = query.trim();
+      const url = new URL(
+        `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/attendees`,
+        window.location.origin,
+      );
+      url.searchParams.set("eligible", "1");
+      if (q) url.searchParams.set("q", q);
+
+      const res = await fetch(url.toString(), { method: "GET" });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "Failed to load users.");
+      }
+      const users = Array.isArray(data.users) ? (data.users as BackofficeEligibleUserItem[]) : [];
+      return users;
+    },
+    [props.course.id],
+  );
+
+  const fetchAttendees = React.useCallback(
+    async () => {
+      const url = `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/attendees`;
+      const res = await fetch(url, { method: "GET" });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data?.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "Failed to load attendees.");
+      }
+      const items = Array.isArray(data.attendees) ? (data.attendees as BackofficeAttendeeItem[]) : [];
+      return items;
+    },
+    [props.course.id],
+  );
+
+  React.useEffect(() => {
+    if (!inviteOpen) return;
+    setInviteError(null);
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      setEligibleBusy(true);
+      try {
+        const users = await fetchEligibleUsers(inviteQuery);
+        if (cancelled) return;
+        setEligibleUsers(users);
+        setSelectedInviteIds((prev) => prev.filter((id) => users.some((u) => u.id === id)));
+      } catch (e) {
+        if (cancelled) return;
+        setEligibleUsers([]);
+        setSelectedInviteIds([]);
+        setInviteError(e instanceof Error ? e.message : "Failed to load users.");
+      } finally {
+        if (!cancelled) setEligibleBusy(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [inviteOpen, inviteQuery, fetchEligibleUsers]);
+
+  React.useEffect(() => {
+    if (!contactOpen) return;
+    setContactError(null);
+    setContactBusy(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await fetchAttendees();
+        if (cancelled) return;
+        setAttendees(items);
+        setSelectedContactIds(items.filter((a) => a.status === "enrolled").map((a) => a.userId));
+      } catch (e) {
+        if (cancelled) return;
+        setAttendees([]);
+        setSelectedContactIds([]);
+        setContactError(e instanceof Error ? e.message : "Failed to load attendees.");
+      } finally {
+        if (!cancelled) setContactBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contactOpen, fetchAttendees]);
 
   const [imageOpen, setImageOpen] = React.useState(false);
   const [imageBusy, setImageBusy] = React.useState(false);
@@ -1252,10 +1372,22 @@ export function BackofficeEditCourseClient(props: {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" disabled>
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => {
+            setContactOpen(true);
+          }}
+        >
           Contact Attendees
         </Button>
-        <Button variant="secondary" disabled>
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => {
+            setInviteOpen(true);
+          }}
+        >
           Add Attendees
         </Button>
       </div>
@@ -2006,6 +2138,355 @@ export function BackofficeEditCourseClient(props: {
               placeholder="https://..."
             />
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={inviteOpen}
+        onOpenChange={(v: boolean) => {
+          if (inviteBusy) return;
+          setInviteOpen(v);
+          if (!v) {
+            setInviteBusy(false);
+            setInviteError(null);
+            setInviteQuery("");
+            setEligibleUsers([]);
+            setSelectedInviteIds([]);
+          }
+        }}
+        title="Add attendees"
+        description="Invite learners to this course. (Works best with Invitation access rule, but you can invite anytime.)"
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted">
+              Selected: <span className="font-semibold text-foreground">{selectedInviteIds.length}</span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="ghost" disabled={inviteBusy} onClick={() => setInviteOpen(false)}>
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                disabled={inviteBusy || selectedInviteIds.length === 0}
+                onClick={async () => {
+                  setInviteError(null);
+                  setInviteBusy(true);
+                  try {
+                    const res = await fetch(
+                      `/api/backoffice/courses/${encodeURIComponent(props.course.id)}/attendees`,
+                      {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ userIds: selectedInviteIds, status: "invited" }),
+                      },
+                    );
+                    const data = (await res.json().catch(() => null)) as any;
+                    if (!res.ok || !data?.ok) {
+                      setInviteError(typeof data?.error === "string" ? data.error : "Failed to invite users.");
+                      return;
+                    }
+
+                    setInviteOpen(false);
+                    router.refresh();
+                  } finally {
+                    setInviteBusy(false);
+                  }
+                }}
+              >
+                {inviteBusy ? "Inviting..." : "Invite"}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          {inviteError && (
+            <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {inviteError}
+            </div>
+          )}
+
+          <div className="grid gap-2">
+            <Label htmlFor="inviteSearch">Search learners</Label>
+            <Input
+              id="inviteSearch"
+              value={inviteQuery}
+              onChange={(e) => setInviteQuery(e.target.value)}
+              placeholder="Search by name or email"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={eligibleBusy || eligibleUsers.length === 0}
+              onClick={() => setSelectedInviteIds(eligibleUsers.map((u) => u.id))}
+            >
+              Select all
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={eligibleBusy || selectedInviteIds.length === 0}
+              onClick={() => setSelectedInviteIds([])}
+            >
+              Select none
+            </Button>
+            {eligibleBusy && <div className="text-xs text-muted">Loading...</div>}
+          </div>
+
+          {eligibleUsers.length === 0 && !eligibleBusy ? (
+            <div className="rounded-[12px] border border-border bg-accent p-3 text-sm text-muted">
+              No eligible learners found.
+            </div>
+          ) : (
+            <div className="max-h-[340px] space-y-2 overflow-auto pr-1">
+              {eligibleUsers.map((u) => {
+                const checked = selectedInviteIds.includes(u.id);
+                return (
+                  <label
+                    key={u.id}
+                    className="flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-border bg-background px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-foreground">{u.name}</div>
+                      <div className="truncate text-xs text-muted">{u.email}</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const on = !!e.target.checked;
+                        setSelectedInviteIds((prev) =>
+                          on ? Array.from(new Set([...prev, u.id])) : prev.filter((id) => id !== u.id),
+                        );
+                      }}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={contactOpen}
+        onOpenChange={(v: boolean) => {
+          if (contactBusy) return;
+          setContactOpen(v);
+          if (!v) {
+            setContactError(null);
+            setAttendees([]);
+            setContactQuery("");
+            setContactIncludeInvited(false);
+            setSelectedContactIds([]);
+            setContactSubject("");
+            setContactBody("");
+          }
+        }}
+        title="Contact attendees"
+        description="Select enrolled learners and open your mail client (or copy emails)."
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted">
+              Selected: <span className="font-semibold text-foreground">{selectedContactIds.length}</span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="ghost" disabled={contactBusy} onClick={() => setContactOpen(false)}>
+                Close
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={contactBusy || selectedContactIds.length === 0}
+                onClick={async () => {
+                  setContactError(null);
+                  const selectedEmails = attendees
+                    .filter((a) => selectedContactIds.includes(a.userId))
+                    .map((a) => a.user.email)
+                    .filter(Boolean);
+
+                  if (selectedEmails.length === 0) {
+                    setContactError("No emails found for selected attendees.");
+                    return;
+                  }
+
+                  try {
+                    await navigator.clipboard.writeText(selectedEmails.join(", "));
+                  } catch {
+                    setContactError("Could not copy to clipboard. Try Open email instead.");
+                  }
+                }}
+              >
+                Copy emails
+              </Button>
+              <Button
+                variant="primary"
+                disabled={contactBusy || selectedContactIds.length === 0}
+                onClick={() => {
+                  setContactError(null);
+                  const selectedEmails = attendees
+                    .filter((a) => selectedContactIds.includes(a.userId))
+                    .map((a) => a.user.email)
+                    .filter(Boolean);
+
+                  if (selectedEmails.length === 0) {
+                    setContactError("No emails found for selected attendees.");
+                    return;
+                  }
+
+                  const bcc = selectedEmails.join(",");
+                  const href = `mailto:?bcc=${encodeURIComponent(bcc)}&subject=${encodeURIComponent(contactSubject)}&body=${encodeURIComponent(contactBody)}`;
+                  window.location.href = href;
+                }}
+              >
+                Open email
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          {contactError && (
+            <div className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {contactError}
+            </div>
+          )}
+
+          <div className="grid gap-2">
+            <Label htmlFor="contactSubject">Subject</Label>
+            <Input
+              id="contactSubject"
+              value={contactSubject}
+              onChange={(e) => setContactSubject(e.target.value)}
+              placeholder={`About: ${props.course.title}`}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="contactBody">Message</Label>
+            <textarea
+              id="contactBody"
+              className="min-h-28 w-full rounded-[12px] border border-border bg-background px-3 py-2 text-sm"
+              value={contactBody}
+              onChange={(e) => setContactBody(e.target.value)}
+              placeholder="Write your message"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={contactIncludeInvited}
+                onChange={(e) => setContactIncludeInvited(!!e.target.checked)}
+              />
+              Include invited
+            </label>
+            {contactBusy && <div className="text-xs text-muted">Loading...</div>}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="contactSearch">Search attendees</Label>
+            <Input
+              id="contactSearch"
+              value={contactQuery}
+              onChange={(e) => setContactQuery(e.target.value)}
+              placeholder="Search by name or email"
+            />
+          </div>
+
+          {(() => {
+            const q = contactQuery.trim().toLowerCase();
+            const filtered = attendees
+              .filter((a) => (contactIncludeInvited ? true : a.status === "enrolled"))
+              .filter((a) => {
+                if (!q) return true;
+                return (
+                  a.user.name.toLowerCase().includes(q) ||
+                  a.user.email.toLowerCase().includes(q)
+                );
+              });
+
+            const selectAll = () => setSelectedContactIds(filtered.map((a) => a.userId));
+            const selectNone = () => setSelectedContactIds([]);
+
+            if (!contactBusy && filtered.length === 0) {
+              return (
+                <div className="rounded-[12px] border border-border bg-accent p-3 text-sm text-muted">
+                  No attendees found.
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={contactBusy || filtered.length === 0}
+                    onClick={selectAll}
+                  >
+                    Select all
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={contactBusy || selectedContactIds.length === 0}
+                    onClick={selectNone}
+                  >
+                    Select none
+                  </Button>
+                </div>
+
+                <div className="max-h-[260px] space-y-2 overflow-auto pr-1">
+                  {filtered.map((a) => {
+                    const checked = selectedContactIds.includes(a.userId);
+                    return (
+                      <label
+                        key={a.userId}
+                        className="flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-border bg-background px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">{a.user.name}</div>
+                          <div className="truncate text-xs text-muted">{a.user.email}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={
+                              a.status === "enrolled"
+                                ? "rounded-full border border-green-200 bg-green-50 px-2 py-1 text-[11px] font-semibold text-green-800"
+                                : "rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"
+                            }
+                          >
+                            {a.status}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const on = !!e.target.checked;
+                              setSelectedContactIds((prev) =>
+                                on
+                                  ? Array.from(new Set([...prev, a.userId]))
+                                  : prev.filter((id) => id !== a.userId),
+                              );
+                            }}
+                          />
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Modal>
 
