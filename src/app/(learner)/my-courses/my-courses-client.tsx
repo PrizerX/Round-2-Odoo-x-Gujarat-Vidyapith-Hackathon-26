@@ -28,6 +28,37 @@ export type MyCourseCard = {
   priceInr?: number;
 };
 
+const COURSE_GRADIENTS: Array<[string, string]> = [
+  ["#fb7185", "#f97316"],
+  ["#f97316", "#facc15"],
+  ["#22c55e", "#06b6d4"],
+  ["#06b6d4", "#3b82f6"],
+  ["#3b82f6", "#8b5cf6"],
+  ["#8b5cf6", "#ec4899"],
+  ["#10b981", "#84cc16"],
+  ["#ef4444", "#f59e0b"],
+];
+
+function hashToIndex(value: string, mod: number): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % mod;
+}
+
+function courseGradientStyle(courseId: string): React.CSSProperties {
+  const idx = hashToIndex(courseId, COURSE_GRADIENTS.length);
+  const [a, b] = COURSE_GRADIENTS[idx]!;
+  return { backgroundImage: `linear-gradient(135deg, ${a}, ${b})` };
+}
+
+function isStockCourseImageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.includes("/images/courses/") || url.includes("\\images\\courses\\");
+}
+
 function CircularProgress(props: {
   value: number;
   labelTop: string;
@@ -175,7 +206,7 @@ export function MyCoursesClient(props: {
                   )}
 
                   <div className="relative h-36 w-full border-b border-border bg-accent">
-                    {course.coverImageUrl ? (
+                    {course.coverImageUrl && !isStockCourseImageUrl(course.coverImageUrl) ? (
                       <Image
                         src={course.coverImageUrl}
                         alt={course.title}
@@ -183,8 +214,8 @@ export function MyCoursesClient(props: {
                         className="object-cover"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm text-muted">
-                        Course Cover image
+                      <div className="h-full w-full" style={courseGradientStyle(course.id)}>
+                        <div className="h-full w-full bg-black/10" />
                       </div>
                     )}
                   </div>
