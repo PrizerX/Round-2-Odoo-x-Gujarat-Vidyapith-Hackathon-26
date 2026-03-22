@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { BADGE_LEVELS, getBadgeForPoints, getNextBadge } from "@/lib/domain/gamification";
 import { getMockBasePoints } from "@/lib/data/mock-learning";
 import { getTotalEarnedPointsForUser } from "@/lib/learning/points";
+import { getLearnerStreak } from "@/lib/learning/streak";
 import { ProfileSettingsClient } from "./profile-settings-client";
 
 function getTotalPoints(userId: string): number {
@@ -44,6 +45,7 @@ export default async function ProfilePage() {
   const points = getTotalPoints(session.user.id) + earned;
   const badge = getBadgeForPoints(points);
   const next = getNextBadge(points);
+  const streak = await getLearnerStreak(session.user.id);
 
   return (
     <div className="space-y-5">
@@ -59,6 +61,46 @@ export default async function ProfilePage() {
         <h1 className="text-xl font-semibold">My Profile</h1>
         <p className="text-sm text-muted">Badges are based on total points earned.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Learner streak</CardTitle>
+            <div className="text-sm text-muted">{streak.totalActiveDays} active day(s) total</div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-sm text-muted">Current streak</div>
+              <div className="mt-1 text-2xl font-extrabold text-emerald-700">
+                {streak.currentStreakDays} day{streak.currentStreakDays === 1 ? "" : "s"}
+              </div>
+              <div className="mt-1 text-sm text-muted">
+                {streak.lastActiveAt ? `Last active: ${streak.lastActiveAt.toLocaleString()}` : "No activity yet"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm text-muted">Last 7 days</div>
+              <div className="mt-2 flex items-center gap-2">
+                {streak.last7Days.map((d) => (
+                  <div key={d.dayKey} className="flex flex-col items-center gap-1">
+                    <div
+                      className={
+                        "h-8 w-8 rounded-[10px] border border-border " +
+                        (d.active ? "bg-emerald-500" : "bg-accent")
+                      }
+                      title={d.dayKey}
+                    />
+                    <div className="text-[10px] text-muted">{d.dayKey.slice(8, 10)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

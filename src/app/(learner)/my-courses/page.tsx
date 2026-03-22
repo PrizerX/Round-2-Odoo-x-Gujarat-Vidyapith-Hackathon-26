@@ -15,6 +15,7 @@ import { getEnrolledCourseIdsForUser } from "@/lib/learning/enrollments";
 import { getPurchasedCourseIdsForUser } from "@/lib/learning/purchases";
 import { getDbProgressMapForUser } from "@/lib/learning/progress";
 import { getTotalEarnedPointsForUser } from "@/lib/learning/points";
+import { getLearnerStreak } from "@/lib/learning/streak";
 
 import { MyCoursesClient, type MyCourseCard } from "./my-courses-client";
 
@@ -31,6 +32,8 @@ export default async function MyCoursesPage() {
   const points = getTotalPoints(userId) + earned;
   const badge = getBadgeForPoints(points);
   const completedCourses = await getCompletedCourseIds(userId);
+
+  const streak = await getLearnerStreak(userId);
 
   const [enrolledIds, purchasedIds, dbProgress] = await Promise.all([
     getEnrolledCourseIdsForUser(userId),
@@ -83,6 +86,7 @@ export default async function MyCoursesPage() {
       points={points}
       badge={badge}
       userName={session.user.name}
+      streak={streak}
     />
   );
 }

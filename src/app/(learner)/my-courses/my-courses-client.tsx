@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { BADGE_LEVELS, type BadgeLevel } from "@/lib/domain/gamification";
 import { cn } from "@/lib/cn";
+import type { LearnerStreak } from "@/lib/learning/streak";
 
 export type MyCourseCard = {
   id: string;
@@ -83,6 +84,7 @@ export function MyCoursesClient(props: {
   points: number;
   badge: BadgeLevel;
   userName: string;
+  streak: LearnerStreak;
 }) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
@@ -249,6 +251,32 @@ export function MyCoursesClient(props: {
           <Card>
             <CardContent className="p-4">
               <div className="text-sm font-semibold">My profile</div>
+
+              <div className="mt-3 rounded-[12px] border border-border bg-accent px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-muted">Learning streak</div>
+                  <div className="text-xs text-muted">{props.streak.totalActiveDays} active day(s)</div>
+                </div>
+                <div className="mt-1 flex items-end justify-between">
+                  <div className="text-sm">
+                    <span className="text-emerald-700 font-extrabold">{props.streak.currentStreakDays}</span>{" "}
+                    <span className="text-muted">day(s)</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {props.streak.last7Days.map((d) => (
+                      <span
+                        key={d.dayKey}
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-[4px] border border-border",
+                          d.active ? "bg-emerald-500" : "bg-surface",
+                        )}
+                        title={d.dayKey}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-4 flex items-center justify-center">
                 <CircularProgress
                   value={Math.min(100, Math.max(0, (props.points / 120) * 100))}
