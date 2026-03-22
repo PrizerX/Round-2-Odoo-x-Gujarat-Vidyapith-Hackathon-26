@@ -2,6 +2,9 @@
 <img width="1770" height="388" alt="Git_banner" src="https://github.com/user-attachments/assets/d3519bb7-3226-4829-9f94-21476fd5953e" />
 </p>
 
+<img width="1731" height="553" alt="OdooBanner2" src="https://github.com/user-attachments/assets/69bfa8e8-b390-46c0-879d-9b5021c2ef0b" />
+
+
 # Learnova
 
 Learnova is a responsive eLearning platform with two experiences: a Backoffice for instructors/admins and a Learner site/app. It’s built for the Learnova 24h hackathon with **local auth + local SQLite database (Prisma)**, so it runs end-to-end without external services.
